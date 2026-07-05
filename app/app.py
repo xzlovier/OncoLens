@@ -25,6 +25,8 @@ PATH_EXPRESSION = PROCESSED_DATA_DIR / f"brain_top{TOP_GENE_COUNT}.csv"
 PATH_ANNOTATED = PROCESSED_DATA_DIR / f"brain_top{TOP_GENE_COUNT}_annotated.csv"
 PATH_PATIENT_DI = PROCESSED_DATA_DIR / "patient_DI.csv"
 PATH_VARIANCE_RANKING = PROCESSED_DATA_DIR / "gene_variance_ranking.csv"
+PATH_TOP_PAIRS = PROCESSED_DATA_DIR / "top_gene_pairs.csv"
+PATH_NETWORK_EDGES = PROCESSED_DATA_DIR / "gene_network_edges.csv"
 
 # ------------------------------------------------------------------------------
 # 2. Server Startup Data Loading
@@ -41,6 +43,10 @@ if not PATH_PATIENT_DI.exists():
     raise FileNotFoundError(f"Patient DI file not found at: {PATH_PATIENT_DI}. Run dysregulation calculations first.")
 if not PATH_VARIANCE_RANKING.exists():
     raise FileNotFoundError(f"Variance ranking file not found at: {PATH_VARIANCE_RANKING}. Run preprocessing first.")
+if not PATH_TOP_PAIRS.exists():
+    raise FileNotFoundError(f"Top gene pairs file not found at: {PATH_TOP_PAIRS}. Run pair evaluation utility first.")
+if not PATH_NETWORK_EDGES.exists():
+    raise FileNotFoundError(f"Gene co-expression network edges not found at: {PATH_NETWORK_EDGES}. Run preprocess_network.py first.")
 
 # Load datasets into memory
 print(f" -> Loading preprocessed expressions: {PATH_EXPRESSION.name}...")
@@ -55,10 +61,22 @@ df_patient_di = pd.read_csv(PATH_PATIENT_DI)
 print(f" -> Loading gene variance rankings : {PATH_VARIANCE_RANKING.name}...")
 df_variance_ranking = pd.read_csv(PATH_VARIANCE_RANKING)
 
+print(f" -> Loading top gene pairs         : {PATH_TOP_PAIRS.name}...")
+df_top_pairs = pd.read_csv(PATH_TOP_PAIRS, index_col="Rank")
+
+print(f" -> Loading co-expression edges    : {PATH_NETWORK_EDGES.name}...")
+df_network_edges = pd.read_csv(PATH_NETWORK_EDGES)
+
+# Merge variance values and 1-based rank indexing directly into annotations at startup
+df_variance_ranking["Rank"] = df_variance_ranking.index + 1
+df_annotated = df_annotated.merge(df_variance_ranking, on="ProbeID", how="left")
+
 print("-" * 70)
 print(f"Successfully loaded {len(df_expression)} samples and {df_expression.shape[1] - 2} features.")
 print(f"Genomic annotations mapped for {len(df_annotated)} genes.")
 print(f"Patient Dysregulation Index loaded for {len(df_patient_di)} patients.")
+print(f"Top gene pairs loaded: {len(df_top_pairs)} pairs available.")
+print(f"Co-expression edges preloaded: {len(df_network_edges)} edges available.")
 print("======================================================================")
 
 # ------------------------------------------------------------------------------
@@ -72,14 +90,15 @@ external_stylesheets = [
 app = dash.Dash(
     __name__,
     external_stylesheets=external_stylesheets,
-    title="OncoLens - Visual Analytics Dashboard"
+    title="OncoLens - Visual Analytics Dashboard",
+    suppress_callback_exceptions=True
 )
 
 # Bind structural layout grid
 app.layout = create_layout()
 
 # Register event router callbacks
-register_callbacks(app)
+register_callbacks(app, df_expression, df_annotated, df_patient_di, df_variance_ranking, df_top_pairs, df_network_edges)
 
 # Expose server wrapper for production WSGI setups
 server = app.server
@@ -89,4 +108,4 @@ server = app.server
 # ------------------------------------------------------------------------------
 if __name__ == "__main__":
     # Start developmental local server
-    app.run(debug=True, port=8050)
+    app.run(debug=True, port=8050, use_reloader=True, load_dotenv=False)
