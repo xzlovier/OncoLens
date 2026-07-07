@@ -80,32 +80,113 @@ print(f"Co-expression edges preloaded: {len(df_network_edges)} edges available."
 print("======================================================================")
 
 # ------------------------------------------------------------------------------
-# 3. Dash Server Initialization
+# 3. Pre-compute layout data (avoids duplicating logic in callbacks.py)
 # ------------------------------------------------------------------------------
-# Fetch Google Fonts (Outfit, Inter) for modern layout styling
+# Gene dropdown options (annotated genes only)
+_gene_options_startup = []
+for _, row in df_annotated.iterrows():
+    sym = row.get("Gene Symbol", "")
+    if pd.notna(sym) and str(sym).strip() not in ("", "nan"):
+        _gene_options_startup.append({
+            "label": f"{sym} ({row['ProbeID']})",
+            "value": row["ProbeID"]
+        })
+_gene_options_startup = sorted(_gene_options_startup, key=lambda x: x["label"])
+
+# Top-20 suggested pairs
+_top_20_startup = []
+for rank, row in df_top_pairs.head(20).iterrows():
+    _top_20_startup.append({
+        "label": f"Rank {rank}: {row['Gene X']} & {row['Gene Y']} (Sil: {row['Silhouette Score']:.3f})",
+        "value": rank,
+    })
+
+# Patient options
+_patient_options_startup = [
+    {"label": f"Patient {pid}", "value": str(pid)}
+    for pid in sorted(df_expression["samples"].unique())
+]
+_default_patient = _patient_options_startup[0]["value"] if _patient_options_startup else None
+
+# Default gene pair (Rank 1)
+_default_x = df_top_pairs.iloc[0]["Probe X"]
+_default_y = df_top_pairs.iloc[0]["Probe Y"]
+
+# Default profile gene (highest-variance with a valid symbol)
+_default_profile = None
+_df_ann_sorted = df_annotated.dropna(subset=["Rank"]).sort_values("Rank")
+for _, _row in _df_ann_sorted.iterrows():
+    _sym = _row.get("Gene Symbol", "")
+    if pd.notna(_sym) and str(_sym).strip() not in ("", "nan"):
+        _default_profile = _row["ProbeID"]
+        break
+if not _default_profile:
+    _default_profile = _df_ann_sorted.iloc[0]["ProbeID"]
+
+# Best pair display string
+_best_pair_row = df_top_pairs.iloc[0]
+_best_pair_str = f"{_best_pair_row['Gene X']} & {_best_pair_row['Gene Y']}"
+
+# Top-variance gene symbol
+_top_gene_sym = "—"
+_top_gene_row = _df_ann_sorted.iloc[0] if not _df_ann_sorted.empty else None
+if _top_gene_row is not None:
+    _sym = _top_gene_row.get("Gene Symbol", "")
+    if pd.notna(_sym) and str(_sym).strip() not in ("", "nan"):
+        _top_gene_sym = str(_sym)
+
+# Simulator default slider values from default patient's baseline expression
+from app.config import DEFAULT_SIM_GENE_1, DEFAULT_SIM_GENE_2, DEFAULT_SIM_GENE_3
+_sim_val1 = _sim_val2 = _sim_val3 = 5.0
+if _default_patient:
+    _p_row = df_expression[df_expression["samples"].astype(str) == str(_default_patient)]
+    if not _p_row.empty:
+        _sim_val1 = float(_p_row[DEFAULT_SIM_GENE_1].values[0])
+        _sim_val2 = float(_p_row[DEFAULT_SIM_GENE_2].values[0])
+        _sim_val3 = float(_p_row[DEFAULT_SIM_GENE_3].values[0])
+
+# ------------------------------------------------------------------------------
+# 4. Dash Server Initialization
+# ------------------------------------------------------------------------------
 external_stylesheets = [
     "https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Inter:wght@300;400;500;600;700&display=swap"
 ]
 
 app = dash.Dash(
     __name__,
+    assets_folder=str(Path(__file__).parent.parent / "assets"),
     external_stylesheets=external_stylesheets,
-    title="OncoLens - Visual Analytics Dashboard",
+    title="OncoLens — Visual Analytics Dashboard",
     suppress_callback_exceptions=True
 )
 
-# Bind structural layout grid
-app.layout = create_layout()
+# Build the unified static dashboard layout
+app.layout = create_layout(
+    n_patients=len(df_expression),
+    n_genes=df_expression.shape[1] - 2,
+    n_classes=df_expression["type"].nunique(),
+    best_pair=_best_pair_str,
+    top_gene=_top_gene_sym,
+    gene_options=_gene_options_startup,
+    top_20_options=_top_20_startup,
+    patient_options=_patient_options_startup,
+    default_x=_default_x,
+    default_y=_default_y,
+    default_profile=_default_profile,
+    default_patient=_default_patient,
+    sim_val1=_sim_val1,
+    sim_val2=_sim_val2,
+    sim_val3=_sim_val3,
+)
 
-# Register event router callbacks
+# Register event-driven callbacks
 register_callbacks(app, df_expression, df_annotated, df_patient_di, df_variance_ranking, df_top_pairs, df_network_edges)
 
 # Expose server wrapper for production WSGI setups
 server = app.server
 
 # ------------------------------------------------------------------------------
-# 4. Local Execution
+# 5. Local Execution
 # ------------------------------------------------------------------------------
 if __name__ == "__main__":
-    # Start developmental local server
     app.run(debug=True, port=8050, use_reloader=True, load_dotenv=False)

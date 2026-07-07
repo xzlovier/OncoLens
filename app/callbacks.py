@@ -1,9 +1,11 @@
 """
 Dashboard Callbacks Module for OncoLens.
 
-This module implements the reactive event handlers, content layout routing,
-dropdown validation, statistics rendering, and interactive contour/scatter visualizations.
-It computes 2D Silhouette scores to rate the clinical separation quality of gene pairs.
+This module implements all reactive event handlers: contour/scatter visualization,
+chromosomal hotspot mapping, co-expression network, gene expression profiles,
+and the Interactive Virtual Expression Assayer (simulator).
+
+Tab routing has been removed; all components are statically mounted at startup.
 """
 
 import numpy as np
@@ -14,7 +16,12 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import silhouette_score
 import networkx as nx
 from dash import Input, Output, html, Dash, callback_context
-from app.layouts import get_overview_layout, get_tab_placeholder_layout, get_contour_layout, get_hotspots_layout, get_network_layout
+from app.layouts.theme import (
+    PLOT_TEMPLATE,
+    PLOT_PAPER_BG, PLOT_PLOT_BG, PLOT_GRID, PLOT_ZEROLINE,
+    PLOT_TICK_COLOR, PLOT_TITLE_COLOR, PLOT_AXIS_LABEL_COLOR,
+    COLOR_TEXT_SECONDARY, COLOR_BORDER,
+)
 
 # ==============================================================================
 # Global Data Storage Placeholders (Populated at Server Startup)
@@ -28,8 +35,13 @@ df_network_edges_global: pd.DataFrame = None
 network_layout_pos: dict = None
 DEFAULT_GENE_X: str = None
 DEFAULT_GENE_Y: str = None
+default_profile_probe_global: str = None
 top_20_options_global: list = []
 gene_options_global: list = []
+gene_cols_global: list = []
+centroids_matrix_global: np.ndarray = None
+patient_options_global: list = []
+subtype_names_list: list = ["normal", "ependymoma", "glioblastoma", "medulloblastoma", "pilocytic_astrocytoma"]
 
 
 def make_stats_card_content(
@@ -144,7 +156,8 @@ def register_callbacks(
     """
     global df_expr_global, df_annot_global, df_di_global, df_rank_global, df_top_pairs_global
     global df_network_edges_global, network_layout_pos
-    global DEFAULT_GENE_X, DEFAULT_GENE_Y, top_20_options_global, gene_options_global
+    global DEFAULT_GENE_X, DEFAULT_GENE_Y, default_profile_probe_global, top_20_options_global, gene_options_global
+    global centroids_matrix_global, gene_cols_global, patient_options_global
     
     # Store dataframes globally in the module
     df_expr_global = df_expression
@@ -153,6 +166,18 @@ def register_callbacks(
     df_rank_global = df_variance_ranking
     df_top_pairs_global = df_top_pairs
     df_network_edges_global = df_network_edges
+    
+    # Initialize simulator configurations
+    gene_cols_global = [col for col in df_expression.columns if col not in ["samples", "type"]]
+    patient_options_global = [{"label": f"Patient {pid}", "value": str(pid)} for pid in sorted(df_expression["samples"].unique())]
+    
+    # Calculate subtype centroids
+    print(" -> Computing diagnostic centroids for Virtual Expression Assayer...")
+    centroids_list = []
+    for subtype in subtype_names_list:
+        df_sub = df_expression[df_expression["type"] == subtype]
+        centroids_list.append(df_sub[gene_cols_global].mean(axis=0).values)
+    centroids_matrix_global = np.array(centroids_list)
     
     # Pre-generate co-expression network spring layout positions once at startup
     print(" -> Constructing co-expression network graph for spring layout calculations...")
@@ -173,6 +198,16 @@ def register_callbacks(
     DEFAULT_GENE_X = df_top_pairs.iloc[0]["Probe X"]
     DEFAULT_GENE_Y = df_top_pairs.iloc[0]["Probe Y"]
     
+    # Resolve the highest-variance annotated gene dynamically as default profile explorer gene
+    df_annot_sorted = df_annotated.dropna(subset=["Rank"]).sort_values(by="Rank")
+    for _, row in df_annot_sorted.iterrows():
+        symbol = row["Gene Symbol"]
+        if pd.notna(symbol) and str(symbol).strip() != "" and str(symbol) != "nan":
+            default_profile_probe_global = row["ProbeID"]
+            break
+    if not default_profile_probe_global:
+        default_profile_probe_global = df_annot_sorted.iloc[0]["ProbeID"]
+    
     # Build Top 20 suggested options
     top_20 = []
     for rank, row in df_top_pairs.head(20).iterrows():
@@ -192,45 +227,16 @@ def register_callbacks(
     # Sort options by symbol alphabetically
     gene_options_global = sorted(options, key=lambda x: x["label"])
 
+
     # --------------------------------------------------------------------------
-    # 1. Main Navigation Tab Router Callback
+    # NOTE: render_tab_content() has been removed.
+    # The dashboard is now a single unified page — all five visualizations are
+    # statically mounted at startup. No tab routing is required.
     # --------------------------------------------------------------------------
-    @app.callback(
-        Output("main-content-panel", "children"),
-        Input("navigation-tabs", "value")
-    )
-    def render_tab_content(active_tab: str) -> html.Div:
-        """
-        Dynamically updates the main panel workspace depending on the active sidebar menu selection.
-        """
-        if active_tab == "tab-overview":
-            return get_overview_layout()
-            
-        elif active_tab == "tab-hotspots":
-            return get_hotspots_layout()
-            
-        elif active_tab == "tab-profiles":
-            return get_tab_placeholder_layout(
-                "Subtype Volumetric Biomarker Profiling",
-                "Quartile distributions and clinical cohort benchmarking using split violin-plots."
-            )
-            
-        elif active_tab == "tab-contour":
-            return get_contour_layout(DEFAULT_GENE_X, DEFAULT_GENE_Y, top_20_options_global)
-            
-        elif active_tab == "tab-network":
-            return get_network_layout()
-            
-        elif active_tab == "tab-simulator":
-            return get_tab_placeholder_layout(
-                "Virtual Expression Assayer (The Simulator Widget)",
-                "Interactive multi-bar clinical classification probability feedback using expression sliders."
-            )
-            
-        return get_overview_layout()
 
     # --------------------------------------------------------------------------
     # 2. Toggle Visibility of the Demonstration Pair Badge
+
     # --------------------------------------------------------------------------
     @app.callback(
         Output("demo-badge", "style"),
@@ -332,12 +338,13 @@ def register_callbacks(
         if not probe_x or not probe_y:
             empty_fig = go.Figure()
             empty_fig.update_layout(
+                template=PLOT_TEMPLATE,
                 title=dict(
                     text="Please select both X-axis and Y-axis genes to begin.",
-                    font=dict(size=14, color="#94a3b8")
+                    font=dict(size=14, color=PLOT_TICK_COLOR)
                 ),
-                plot_bgcolor="#0f172a",
-                paper_bgcolor="#0f172a",
+                plot_bgcolor=PLOT_PLOT_BG,
+                paper_bgcolor=PLOT_PAPER_BG,
                 xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
                 yaxis=dict(showgrid=False, zeroline=False, showticklabels=False)
             )
@@ -360,9 +367,10 @@ def register_callbacks(
         if probe_x not in df_expr_global.columns or probe_y not in df_expr_global.columns:
             error_fig = go.Figure()
             error_fig.update_layout(
+                template=PLOT_TEMPLATE,
                 title=dict(text="Error: Selected probe not found in expression database.", font=dict(color="#ef4444")),
-                plot_bgcolor="#0f172a",
-                paper_bgcolor="#0f172a"
+                plot_bgcolor=PLOT_PLOT_BG,
+                paper_bgcolor=PLOT_PAPER_BG
             )
             return error_fig, [html.P("Error loading gene.")], [html.P("Error loading gene.")], [html.P("Error loading pair.")]
 
@@ -470,9 +478,9 @@ def register_callbacks(
                     name=display_name,
                     marker=dict(
                         color=subtype_color, 
-                        size=9.5,                # Slightly larger size
-                        opacity=0.78,            # Moderate transparency
-                        line=dict(width=0.6, color="#ffffff") # Thin outline
+                        size=9.5,
+                        opacity=0.78,
+                        line=dict(width=0.6, color="rgba(255,255,255,0.4)")
                     ),
                     customdata=np.stack((df_sub["samples"], df_sub["type"], x_vals, y_vals), axis=-1),
                     hovertemplate=(
@@ -486,28 +494,29 @@ def register_callbacks(
                 
         # I. Styling configurations
         fig.update_layout(
+            template=PLOT_TEMPLATE,
             title=dict(
                 text=f"Joint Gene Phenotyping: {symbol_x} vs {symbol_y}",
-                font=dict(size=18, color="#f8fafc", family="Outfit")
+                font=dict(size=16, color=PLOT_TITLE_COLOR, family="Outfit")
             ),
             xaxis=dict(
-                title=dict(text=f"{symbol_x} Expression ({probe_x})", font=dict(color="#f8fafc", size=13)),
-                tickfont=dict(color="#94a3b8"),
-                gridcolor="#1e293b",
-                zerolinecolor="#334155"
+                title=dict(text=f"{symbol_x} Expression ({probe_x})", font=dict(color=PLOT_AXIS_LABEL_COLOR, size=12)),
+                tickfont=dict(color=PLOT_TICK_COLOR),
+                gridcolor=PLOT_GRID,
+                zerolinecolor=PLOT_ZEROLINE,
             ),
             yaxis=dict(
-                title=dict(text=f"{symbol_y} Expression ({probe_y})", font=dict(color="#f8fafc", size=13)),
-                tickfont=dict(color="#94a3b8"),
-                gridcolor="#1e293b",
-                zerolinecolor="#334155"
+                title=dict(text=f"{symbol_y} Expression ({probe_y})", font=dict(color=PLOT_AXIS_LABEL_COLOR, size=12)),
+                tickfont=dict(color=PLOT_TICK_COLOR),
+                gridcolor=PLOT_GRID,
+                zerolinecolor=PLOT_ZEROLINE,
             ),
-            plot_bgcolor="#0f172a",
-            paper_bgcolor="#0f172a",
+            plot_bgcolor=PLOT_PLOT_BG,
+            paper_bgcolor=PLOT_PAPER_BG,
             legend=dict(
-                font=dict(color="#cbd5e1"),
-                bgcolor="rgba(15, 23, 42, 0.8)",
-                bordercolor="#1e293b",
+                font=dict(color=PLOT_TITLE_COLOR),
+                bgcolor="rgba(255,255,255,0.9)",
+                bordercolor=COLOR_BORDER,
                 borderwidth=1,
                 orientation="h",
                 yanchor="bottom",
@@ -515,7 +524,7 @@ def register_callbacks(
                 xanchor="right",
                 x=1
             ),
-            margin=dict(l=50, r=40, t=80, b=50),
+            margin=dict(l=50, r=40, t=70, b=50),
             hovermode="closest"
         )
         
@@ -593,28 +602,29 @@ def register_callbacks(
         title_text = "Genome-Wide Expression Variance Hotspots" if selected_chr == "All" else f"Chromosome {selected_chr} Hotspot Loci"
         
         fig.update_layout(
+            template=PLOT_TEMPLATE,
             title=dict(
                 text=title_text,
-                font=dict(size=18, color="#f8fafc", family="Outfit")
+                font=dict(size=16, color=PLOT_TITLE_COLOR, family="Outfit")
             ),
             xaxis=dict(
-                title=dict(text="Genomic Coordinate (Base Pairs)", font=dict(color="#f8fafc", size=13)),
-                tickfont=dict(color="#94a3b8"),
-                gridcolor="#1e293b",
-                zerolinecolor="#334155",
+                title=dict(text="Genomic Coordinate (Base Pairs)", font=dict(color=PLOT_AXIS_LABEL_COLOR, size=12)),
+                tickfont=dict(color=PLOT_TICK_COLOR),
+                gridcolor=PLOT_GRID,
+                zerolinecolor=PLOT_ZEROLINE,
                 tickformat=","
             ),
             yaxis=dict(
-                title=dict(text="Chromosomal Tracks", font=dict(color="#f8fafc", size=13)),
-                tickfont=dict(color="#94a3b8"),
-                gridcolor="#1e293b",
+                title=dict(text="Chromosomal Tracks", font=dict(color=PLOT_AXIS_LABEL_COLOR, size=12)),
+                tickfont=dict(color=PLOT_TICK_COLOR),
+                gridcolor=PLOT_GRID,
                 type="category",
                 categoryarray=chroms_order,
                 categoryorder="array"
             ),
-            plot_bgcolor="#0f172a",
-            paper_bgcolor="#0f172a",
-            margin=dict(l=60, r=40, t=80, b=50),
+            plot_bgcolor=PLOT_PLOT_BG,
+            paper_bgcolor=PLOT_PAPER_BG,
+            margin=dict(l=60, r=40, t=70, b=50),
             hovermode="closest"
         )
         
@@ -950,9 +960,10 @@ def register_callbacks(
         title_text = "Co-Expression network (r ≥ {0:.2f})".format(threshold)
         
         fig.update_layout(
+            template=PLOT_TEMPLATE,
             title=dict(
                 text=title_text,
-                font=dict(size=18, color="#f8fafc", family="Outfit")
+                font=dict(size=16, color=PLOT_TITLE_COLOR, family="Outfit")
             ),
             xaxis=dict(
                 showgrid=False,
@@ -965,7 +976,7 @@ def register_callbacks(
                 showticklabels=False
             ),
             plot_bgcolor="rgba(0,0,0,0)",
-            paper_bgcolor="#0f172a",
+            paper_bgcolor=PLOT_PAPER_BG,
             margin=dict(l=20, r=20, t=60, b=20),
             hovermode="closest",
             dragmode="pan"
@@ -1044,3 +1055,554 @@ def register_callbacks(
             card_content = [html.P("Gene details unavailable.")]
             
         return fig, card_content
+
+    # --------------------------------------------------------------------------
+    # 8. Gene Expression Profile Explorer Callback
+    # --------------------------------------------------------------------------
+    @app.callback(
+        [Output("profiles-plot", "figure"),
+         Output("profiles-details-card", "children")],
+        [Input("profiles-gene-selector", "value")]
+    )
+    def update_profiles(probe_id: str) -> Tuple[go.Figure, list]:
+        """
+        Calculates subtype cohort statistics and renders a combined violin, box,
+        and jittered scatter plot for the selected gene.
+        """
+        from scipy import stats
+        
+        # 1. Query annotations details
+        ann_row = df_annot_global[df_annot_global["ProbeID"] == probe_id]
+        if ann_row.empty:
+            return go.Figure(), [html.P("Gene details unavailable.")]
+            
+        row = ann_row.iloc[0]
+        symbol = row["Gene Symbol"] if pd.notna(row["Gene Symbol"]) else "Unknown"
+        chrom = row["Chromosome"]
+        cytoband = row["Cytoband"]
+        rank = row["Rank"]
+        variance = row["Variance"]
+        
+        # 2. Extract expression values and calculate cohort metrics
+        expr_series = df_expr_global[probe_id]
+        mean_overall = expr_series.mean()
+        median_overall = expr_series.median()
+        std_overall = expr_series.std()
+        min_overall = expr_series.min()
+        max_overall = expr_series.max()
+        n_samples = len(expr_series)
+        
+        # Standardized subtype ordering
+        SUBTYPE_ORDER = ["normal", "ependymoma", "glioblastoma", "medulloblastoma", "pilocytic_astrocytoma"]
+        
+        # 3. Compute one-way ANOVA p-value across the 5 cohorts
+        groups = [df_expr_global[df_expr_global["type"] == subtype][probe_id].values for subtype in SUBTYPE_ORDER]
+        # Filter groups to make sure they are not empty
+        groups_valid = [g for g in groups if len(g) > 0]
+        
+        if len(groups_valid) >= 2:
+            try:
+                f_stat, p_value = stats.f_oneway(*groups_valid)
+                p_value_str = f"{p_value:.4e}" if p_value >= 1e-4 else f"{p_value:.2e}"
+                if p_value < 1e-12:
+                    p_value_str = "< 1e-12"
+            except Exception:
+                p_value_str = "Error calculating"
+        else:
+            p_value_str = "N/A"
+            
+        # 4. Generate combined Plotly violin, box, and jittered points figure
+        fig = go.Figure()
+        
+        # Establish standard color mapping
+        color_map = {
+            "normal": "#10b981",          # Emerald
+            "ependymoma": "#3b82f6",      # Blue
+            "glioblastoma": "#ef4444",    # Crimson
+            "medulloblastoma": "#8b5cf6", # Purple
+            "pilocytic_astrocytoma": "#f59e0b" # Amber
+        }
+        
+        # Add trace for each clinical class in standard sequence
+        for subtype in SUBTYPE_ORDER:
+            df_sub = df_expr_global[df_expr_global["type"] == subtype]
+            if df_sub.empty:
+                continue
+                
+            y_vals = df_sub[probe_id].values
+            samples = df_sub["samples"].values
+            
+            # Format hover tooltip labels: Sample ID, Subtype, Expression
+            customdata = np.stack((samples, [subtype.replace('_', ' ').title()]*len(samples)), axis=-1)
+            
+            display_name = subtype.replace("_", " ").title()
+            subtype_color = color_map.get(subtype, "#cbd5e1")
+            x_tick_label = f"{display_name}<br>(N={len(df_sub)})"
+            
+            fig.add_trace(go.Violin(
+                x=[x_tick_label] * len(df_sub),
+                y=y_vals,
+                name=display_name,
+                box_visible=True,
+                meanline_visible=True,
+                points='all',
+                jitter=0.3,
+                pointpos=-1.8, # Position points to the left of the violin
+                marker=dict(size=5, opacity=0.7, color=subtype_color),
+                line=dict(color=subtype_color, width=1.5),
+                fillcolor=subtype_color,
+                opacity=0.8,
+                customdata=customdata,
+                hovertemplate=(
+                    "<b>Sample ID</b>: %{customdata[0]}<br>"
+                    "<b>Subtype</b>: %{customdata[1]}<br>"
+                    "<b>Expression Level</b>: %{y:.4f}<br>"
+                    "<extra></extra>"
+                ),
+                showlegend=False
+            ))
+            
+        # 5. Add a faint horizontal reference line representing the overall mean
+        fig.add_shape(
+            type="line",
+            x0=-0.5,
+            x1=len(groups_valid) - 0.5,
+            y0=mean_overall,
+            y1=mean_overall,
+            line=dict(
+                color="#cbd5e1",
+                width=1.2,
+                dash="dash"
+            ),
+            xref="x",
+            yref="y"
+        )
+        
+        # Annotate overall mean line
+        fig.add_annotation(
+            x=len(groups_valid) - 0.55,
+            y=mean_overall,
+            text=f"Overall Mean: {mean_overall:.4f}",
+            showarrow=False,
+            yshift=10,
+            font=dict(color=PLOT_TICK_COLOR, size=10, family="Inter")
+        )
+        
+        title_text = f"Subtype Expression Profile: {symbol} ({probe_id})"
+        
+        fig.update_layout(
+            template=PLOT_TEMPLATE,
+            title=dict(
+                text=title_text,
+                font=dict(size=16, color=PLOT_TITLE_COLOR, family="Outfit")
+            ),
+            xaxis=dict(
+                title=dict(text="Clinical Cohort", font=dict(color=PLOT_AXIS_LABEL_COLOR, size=12)),
+                tickfont=dict(color=PLOT_TICK_COLOR),
+                gridcolor=PLOT_GRID,
+                categoryorder="array",
+                categoryarray=[f"{s.replace('_', ' ').title()}<br>(N={len(df_expr_global[df_expr_global['type'] == s])})" for s in SUBTYPE_ORDER]
+            ),
+            yaxis=dict(
+                title=dict(text="Log2 Normalized Expression Value", font=dict(color=PLOT_AXIS_LABEL_COLOR, size=12)),
+                tickfont=dict(color=PLOT_TICK_COLOR),
+                gridcolor=PLOT_GRID,
+                zerolinecolor=PLOT_ZEROLINE,
+            ),
+            plot_bgcolor=PLOT_PLOT_BG,
+            paper_bgcolor=PLOT_PAPER_BG,
+            margin=dict(l=60, r=40, t=70, b=60),
+            hovermode="closest"
+        )
+        
+        # 6. Render Statistics and ANOVA details card
+        card_content = [
+            html.H3("Gene Statistics", style={"borderBottom": "1px solid #1e293b", "paddingBottom": "0.75rem", "color": "#f8fafc", "marginTop": "0"}),
+            html.Div(
+                style={"display": "flex", "flexDirection": "column", "gap": "1.1rem", "marginTop": "1.5rem"},
+                children=[
+                    html.Div([
+                        html.Span("Gene Symbol", style={"fontSize": "0.85rem", "color": "#64748b", "display": "block"}),
+                        html.Strong(symbol, style={"color": "#10b981", "fontSize": "1.6rem", "fontFamily": "Outfit"})
+                    ]),
+                    html.Div([
+                        html.Span("Probe Set ID", style={"fontSize": "0.85rem", "color": "#64748b", "display": "block"}),
+                        html.Strong(probe_id, style={"color": "#f8fafc", "fontSize": "1.1rem"})
+                    ]),
+                    html.Div(
+                        style={"display": "grid", "gridTemplateColumns": "1fr 1fr", "gap": "1rem"},
+                        children=[
+                            html.Div([
+                                html.Span("Chromosome", style={"fontSize": "0.85rem", "color": "#64748b", "display": "block"}),
+                                html.Strong(f"Chr {chrom}" if pd.notna(chrom) else "Unmapped", style={"color": "#cbd5e1", "fontSize": "1rem"})
+                            ]),
+                            html.Div([
+                                html.Span("Cytoband", style={"fontSize": "0.85rem", "color": "#64748b", "display": "block"}),
+                                html.Strong(cytoband if pd.notna(cytoband) else "Unmapped", style={"color": "#cbd5e1", "fontSize": "1rem"})
+                            ])
+                        ]
+                    ),
+                    html.Div(
+                        style={"display": "grid", "gridTemplateColumns": "1fr 1fr", "gap": "1rem"},
+                        children=[
+                            html.Div([
+                                html.Span("Variance Rank", style={"fontSize": "0.85rem", "color": "#64748b", "display": "block"}),
+                                html.Strong(f"#{int(rank)}" if pd.notna(rank) else "N/A", style={"color": "#f59e0b", "fontSize": "1rem"})
+                            ]),
+                            html.Div([
+                                html.Span("ANOVA p-value", style={"fontSize": "0.85rem", "color": "#64748b", "display": "block"}),
+                                html.Strong(p_value_str, style={"color": "#10b981" if p_value_str.startswith("<") or (not p_value_str.startswith("Error") and float(p_value_str.split('e')[0]) < 0.05) else "#cbd5e1", "fontSize": "1rem"})
+                            ])
+                        ]
+                    ),
+                    html.Div(
+                        style={"display": "grid", "gridTemplateColumns": "1fr 1fr", "gap": "1rem"},
+                        children=[
+                            html.Div([
+                                html.Span("Mean Expression", style={"fontSize": "0.85rem", "color": "#64748b", "display": "block"}),
+                                html.Strong(f"{mean_overall:.4f}", style={"color": "#cbd5e1", "fontSize": "1rem"})
+                            ]),
+                            html.Div([
+                                html.Span("Median Expression", style={"fontSize": "0.85rem", "color": "#64748b", "display": "block"}),
+                                html.Strong(f"{median_overall:.4f}", style={"color": "#cbd5e1", "fontSize": "1rem"})
+                            ])
+                        ]
+                    ),
+                    html.Div(
+                        style={"display": "grid", "gridTemplateColumns": "1fr 1fr", "gap": "1rem"},
+                        children=[
+                            html.Div([
+                                html.Span("Std Deviation", style={"fontSize": "0.85rem", "color": "#64748b", "display": "block"}),
+                                html.Strong(f"{std_overall:.4f}", style={"color": "#cbd5e1", "fontSize": "1rem"})
+                            ]),
+                            html.Div([
+                                html.Span("Min Expression", style={"fontSize": "0.85rem", "color": "#64748b", "display": "block"}),
+                                html.Strong(f"{min_overall:.4f}", style={"color": "#cbd5e1", "fontSize": "1rem"})
+                            ])
+                        ]
+                    ),
+                    html.Div(
+                        style={"display": "grid", "gridTemplateColumns": "1fr 1fr", "gap": "1rem"},
+                        children=[
+                            html.Div([
+                                html.Span("Max Expression", style={"fontSize": "0.85rem", "color": "#64748b", "display": "block"}),
+                                html.Strong(f"{max_overall:.4f}", style={"color": "#cbd5e1", "fontSize": "1rem"})
+                            ]),
+                            html.Div([
+                                html.Span("Sample Count", style={"fontSize": "0.85rem", "color": "#64748b", "display": "block"}),
+                                html.Strong(f"{n_samples}", style={"color": "#cbd5e1", "fontSize": "1rem"})
+                            ])
+                        ]
+                    )
+                ]
+            )
+        ]
+        
+        return fig, card_content
+
+    # --------------------------------------------------------------------------
+    # 9. Virtual Expression Assayer (Simulator Widget) bounds & values reset
+    # --------------------------------------------------------------------------
+    @app.callback(
+        [Output("simulator-slider-1", "min"),
+         Output("simulator-slider-1", "max"),
+         Output("simulator-slider-1", "value"),
+         Output("simulator-slider-2", "min"),
+         Output("simulator-slider-2", "max"),
+         Output("simulator-slider-2", "value"),
+         Output("simulator-slider-3", "min"),
+         Output("simulator-slider-3", "max"),
+         Output("simulator-slider-3", "value")],
+        [Input("simulator-patient-selector", "value"),
+         Input("simulator-gene-1", "value"),
+         Input("simulator-gene-2", "value"),
+         Input("simulator-gene-3", "value"),
+         Input("simulator-reset-btn", "n_clicks")]
+    )
+    def update_simulator_slider_bounds(patient_id, gene1, gene2, gene3, n_clicks):
+        """
+        Dynamically adjusts the min, max, and values of the three perturbation sliders
+        based on the selected patient baseline, gene selection, or reset button click.
+        """
+        import datetime
+        ctx = callback_context
+        triggered_id = ctx.triggered_id if hasattr(ctx, "triggered_id") else (ctx.triggered[0]["prop_id"].split(".")[0] if ctx.triggered else "")
+        now_str = datetime.datetime.now().isoformat()
+        
+        print(f"\n[CALLBACK EXECUTION] timestamp={now_str} name=update_simulator_slider_bounds")
+        print(f"  triggered_id: {triggered_id}")
+        print(f"  Inputs: patient_id={patient_id}, gene1={gene1}, gene2={gene2}, gene3={gene3}, n_clicks={n_clicks}")
+        
+        # Ignore reset button initial render/mount triggers (when n_clicks is 0 or None)
+        if triggered_id == "simulator-reset-btn" and (n_clicks is None or n_clicks == 0):
+            print("  update_simulator_slider_bounds: Ignored reset button initial render trigger.")
+            return [dash.no_update] * 9
+            
+        if not patient_id:
+            results = (0, 15, 5, 0, 15, 5, 0, 15, 5)
+            print(f"  Outputs: {results}")
+            return results
+            
+        patient_row = df_expr_global[df_expr_global["samples"].astype(str) == str(patient_id)]
+        if patient_row.empty:
+            results = (0, 15, 5, 0, 15, 5, 0, 15, 5)
+            print(f"  Outputs: {results}")
+            return results
+        results = []
+        for gene in [gene1, gene2, gene3]:
+            baseline = patient_row[gene].values[0]
+            
+            g_min = df_expr_global[gene].min()
+            g_max = df_expr_global[gene].max()
+            g_range = g_max - g_min if g_max > g_min else 1.0
+            
+            s_min = max(0.0, float(g_min - 0.1 * g_range))
+            s_max = float(g_max + 0.1 * g_range)
+            
+            val = float(baseline)
+            if val < s_min:
+                s_min = max(0.0, val - 0.5)
+            if val > s_max:
+                s_max = val + 0.5
+                
+            results.extend([round(s_min, 2), round(s_max, 2), round(val, 3)])
+            
+        print(f"  Outputs: {results}")
+        return results
+
+    # --------------------------------------------------------------------------
+    # 10. Virtual Expression Assayer Simulation Calculation & Plotting
+    # --------------------------------------------------------------------------
+    @app.callback(
+        [Output("simulator-plot", "figure"),
+         Output("simulator-prediction-card", "children"),
+         Output("simulator-distance-card", "children"),
+         Output("simulator-slider-label-1", "children"),
+         Output("simulator-slider-label-2", "children"),
+         Output("simulator-slider-label-3", "children")],
+        [Input("simulator-patient-selector", "value"),
+         Input("simulator-gene-1", "value"),
+         Input("simulator-gene-2", "value"),
+         Input("simulator-gene-3", "value"),
+         Input("simulator-slider-1", "value"),
+         Input("simulator-slider-2", "value"),
+         Input("simulator-slider-3", "value")]
+    )
+    def run_simulation(patient_id, gene1, gene2, gene3, val1, val2, val3):
+        """
+        Runs the centroid distance classifier on the perturbed expression vector
+        and updates the horizontal probability plot, prediction card, and distances.
+        """
+        try:
+            import datetime
+            ctx = callback_context
+            triggered_id = ctx.triggered_id if hasattr(ctx, "triggered_id") else (ctx.triggered[0]["prop_id"].split(".")[0] if ctx.triggered else "")
+            now_str = datetime.datetime.now().isoformat()
+            
+            # Resolve patient ID if None
+            if patient_id is None:
+                patient_id = patient_options_global[0]["value"] if patient_options_global else "834"
+                
+            patient_row = df_expr_global[df_expr_global["samples"].astype(str) == str(patient_id)]
+            if patient_row.empty:
+                patient_row = df_expr_global.iloc[0:1]
+                patient_id = str(patient_row["samples"].values[0])
+                
+            # Resolve None slider values to baseline expression values (avoiding blank figures on startup/transition)
+            resolved_val1 = val1 if val1 is not None else float(patient_row[gene1].values[0])
+            resolved_val2 = val2 if val2 is not None else float(patient_row[gene2].values[0])
+            resolved_val3 = val3 if val3 is not None else float(patient_row[gene3].values[0])
+            
+            # Copy the original patient expression vector for the 1000 genes
+            patient_vector = patient_row[gene_cols_global].iloc[0].values.copy()
+            
+            # Replace the 3 selected genes with the resolved slider values
+            try:
+                idx1 = gene_cols_global.index(gene1)
+                idx2 = gene_cols_global.index(gene2)
+                idx3 = gene_cols_global.index(gene3)
+                
+                patient_vector[idx1] = resolved_val1
+                patient_vector[idx2] = resolved_val2
+                patient_vector[idx3] = resolved_val3
+            except ValueError:
+                return go.Figure(), [html.P("Gene not found.")], [html.P("Gene not found.")], "", "", ""
+                
+            from app.config import SIMULATOR_TEMPERATURE
+            
+            # Compute Euclidean distance to each subtype centroid
+            diffs = centroids_matrix_global - patient_vector
+            distances = np.linalg.norm(diffs, axis=1) # Shape: (5,)
+            
+            # Shifted scores formulation: scores = -(distances - min(distances))
+            scores = -(distances - np.min(distances))
+            
+            # Scale scores using temperature factor T (default 20.0)
+            exp_scores = np.exp(scores / SIMULATOR_TEMPERATURE)
+            probabilities = exp_scores / np.sum(exp_scores)
+            
+            # Print formal run_simulation diagnostics
+            print("\n=== RUN_SIMULATION DIAGNOSTICS ===")
+            print(f"  timestamp                     : {now_str}")
+            print(f"  triggered_id                  : {triggered_id}")
+            print(f"  patient_id                    : {patient_id}")
+            print(f"  genes                         : {gene1}, {gene2}, {gene3}")
+            print(f"  slider values (input)         : val1={val1}, val2={val2}, val3={val3}")
+            print(f"  first 5 values of baseline vec: {patient_row[gene_cols_global].iloc[0].values[:5].tolist()}")
+            print(f"  modified indices              : idx1={idx1}, idx2={idx2}, idx3={idx3}")
+            print(f"  values written to copy vec    : val1={resolved_val1:.4f}, val2={resolved_val2:.4f}, val3={resolved_val3:.4f}")
+            print(f"  computed centroid distances   : {[float(d) for d in distances]}")
+            print(f"  computed probabilities        : {[float(p) for p in probabilities]}")
+            print(f"  Softmax temperature T         : {SIMULATOR_TEMPERATURE}")
+            print("==================================\n")
+            
+            # Find highest probability index
+            max_idx = int(np.argmax(probabilities))
+            prediction_confidence = float(probabilities[max_idx] * 100)
+            
+            # Establish standard color mapping
+            color_map = {
+                "normal": "#10b981",          # Emerald
+                "ependymoma": "#3b82f6",      # Blue
+                "glioblastoma": "#ef4444",    # Crimson
+                "medulloblastoma": "#8b5cf6", # Purple
+                "pilocytic_astrocytoma": "#f59e0b" # Amber
+            }
+            
+            # Helper to retrieve gene symbol
+            def get_symbol(gene_id):
+                match = df_annot_global[df_annot_global["ProbeID"] == gene_id]
+                if not match.empty:
+                    sym = match["Gene Symbol"].values[0]
+                    if pd.notna(sym) and str(sym).strip() != "" and str(sym) != "nan":
+                        return sym
+                return gene_id
+                
+            # 1. Build labels displaying symbols, current slider values, and deviations
+            labels = []
+            for gene, val in [(gene1, resolved_val1), (gene2, resolved_val2), (gene3, resolved_val3)]:
+                sym = get_symbol(gene)
+                baseline = patient_row[gene].values[0]
+                delta = val - baseline
+                sign = "+" if delta >= 0 else ""
+                
+                label_el = [
+                    html.Span(f"{sym} ({gene})"),
+                    html.Span(
+                        f"{val:.3f} ({sign}{delta:.3f})", 
+                        style={"color": "#10b981" if delta >= 0 else "#ef4444", "fontWeight": "bold"}
+                    )
+                ]
+                labels.append(label_el)
+                
+            # 2. Horizontal probability bar chart
+            y_labels = [s.replace("_", " ").title() for s in subtype_names_list]
+            prob_percentages = probabilities * 100
+            
+            # Highlight predicted class via color opacity boundaries
+            opacities = [1.0 if i == max_idx else 0.55 for i in range(5)]
+            bar_colors = [color_map.get(s, "#cbd5e1") for s in subtype_names_list]
+            
+            # Reverse all lists for horizontal plotting direction so that Normal is at the top
+            y_labels_reversed = y_labels[::-1]
+            prob_percentages_reversed = [float(p) for p in prob_percentages[::-1]]
+            opacities_reversed = opacities[::-1]
+            bar_colors_reversed = bar_colors[::-1]
+            
+            # Diagnostic prints as requested by user
+            print("\n=== SIMULATOR DIAGNOSTIC REPORT ===")
+            print(f"Selected Patient: {patient_id}")
+            print(f"Selected Genes: {gene1}, {gene2}, {gene3}")
+            print(f"Perturbed Expression Values: {resolved_val1:.4f}, {resolved_val2:.4f}, {resolved_val3:.4f}")
+            print(f"Raw Euclidean Distances: {[float(d) for d in distances]}")
+            print(f"Shifted Scores for Softmax: {[float(s) for s in scores]}")
+            print(f"Final Probabilities: {[float(p) for p in probabilities]}")
+            print(f"Probabilities Sum: {float(np.sum(probabilities)):.6f}")
+            print(f"Has NaN: {bool(np.isnan(probabilities).any())}")
+            print(f"Has Inf: {bool(np.isinf(probabilities).any())}")
+            print(f"Lengths check - Subtypes: {len(y_labels_reversed)}, Probs: {len(prob_percentages_reversed)}, Colors: {len(bar_colors_reversed)}, Opacities: {len(opacities_reversed)}")
+            
+            fig = go.Figure()
+            fig.add_trace(go.Bar(
+                x=prob_percentages_reversed,
+                y=y_labels_reversed,
+                orientation="h",
+                marker=dict(
+                    color=bar_colors_reversed,
+                    opacity=opacities_reversed,
+                    line=dict(color="rgba(0,0,0,0.1)", width=1.0)
+                ),
+                text=[f" {p:.1f}%" for p in prob_percentages_reversed],
+                textposition="outside",
+                textfont=dict(color=PLOT_TITLE_COLOR, size=11, family="Inter"),
+                hovertemplate="<b>%{y}</b><br>Probability: %{x:.2f}%<extra></extra>"
+            ))
+            
+            fig.update_layout(
+                template=PLOT_TEMPLATE,
+                xaxis=dict(
+                    title=dict(text="Classification Probability (%)", font=dict(color=PLOT_AXIS_LABEL_COLOR, size=12)),
+                    tickfont=dict(color=PLOT_TICK_COLOR),
+                    gridcolor=PLOT_GRID,
+                    range=[0, 115],
+                ),
+                yaxis=dict(
+                    tickfont=dict(color=PLOT_TITLE_COLOR, size=12),
+                    type="category",
+                ),
+                plot_bgcolor=PLOT_PLOT_BG,
+                paper_bgcolor=PLOT_PAPER_BG,
+                margin=dict(l=20, r=45, t=15, b=40)
+            )
+            
+            # 3. Predicted class card
+            predicted_subtype = subtype_names_list[max_idx].replace("_", " ").title()
+            subtype_color = color_map.get(subtype_names_list[max_idx], "#cbd5e1")
+            
+            prediction_card = [
+                html.H4("Predicted Subtype", style={"color": "#64748b", "fontSize": "0.9rem", "textTransform": "uppercase", "letterSpacing": "0.05em", "marginTop": "0", "marginBottom": "0.5rem"}),
+                html.Strong(predicted_subtype, style={"color": subtype_color, "fontSize": "1.75rem", "fontFamily": "Outfit", "display": "block", "marginBottom": "0.25rem"}),
+                html.Span([
+                    html.Span("Confidence: ", style={"color": "#64748b", "fontSize": "0.9rem"}),
+                    html.Strong(f"{prediction_confidence:.1f}%", style={"color": "#f8fafc", "fontSize": "1.1rem"})
+                ])
+            ]
+            
+            # 4. Centroid distances list
+            distance_items = []
+            for i, subtype in enumerate(subtype_names_list):
+                display_name = subtype.replace("_", " ").title()
+                dist = distances[i]
+                
+                distance_items.append(
+                    html.Div(
+                        style={"display": "flex", "justifyContent": "space-between", "alignItems": "center", "marginBottom": "0.4rem"},
+                        children=[
+                            html.Span(display_name, style={"color": "#cbd5e1", "fontSize": "0.9rem"}),
+                            html.Span(
+                                f"{dist:.3f}", 
+                                style={
+                                    "color": "#10b981" if i == max_idx else "#94a3b8",
+                                    "fontWeight": "bold" if i == max_idx else "normal",
+                                    "fontSize": "0.95rem"
+                                }
+                            )
+                        ]
+                    )
+                )
+                
+            distance_card = [
+                html.H4("Centroid Distances", style={"color": "#64748b", "fontSize": "0.9rem", "textTransform": "uppercase", "letterSpacing": "0.05em", "marginTop": "0", "marginBottom": "0.75rem", "borderBottom": "1px solid #1e293b", "paddingBottom": "0.5rem"}),
+                html.Div(distance_items)
+            ]
+            
+
+            outputs = (fig, prediction_card, distance_card, labels[0], labels[1], labels[2])
+            print(f"  Outputs (Lengths prediction_card={len(prediction_card)}, distance_card={len(distance_card)}): Successfully returned.")
+            return outputs
+        except Exception as e:
+            import traceback
+            print("\n==================== EXCEPTION ====================")
+            traceback.print_exc()
+            print("===================================================\n")
+            raise
