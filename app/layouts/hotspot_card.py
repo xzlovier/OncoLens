@@ -6,15 +6,42 @@ from dash import html, dcc
 from app.layouts.viz_card import viz_card
 
 
-def HotspotCard() -> html.Div:
+def HotspotCard(
+    default_chr: str = "All",
+) -> html.Div:
     """
     Returns the viz card for Chromosomal Hotspot & Cytoband Mapping.
 
-    The chromosome selector lives in the global ControlBar (id="hotspots-chr-selector").
-    This card contains the scatter plot and the gene detail side panel.
+    Chromosome selector dropdown is placed on the right side of the card header.
     """
-    plot_col = html.Div(
-        style={"flex": "1", "minWidth": "0"},
+    dd_style = {"color": "#1F2937", "fontSize": "0.85rem"}
+    
+    chr_dropdown = html.Div(
+        style={"width": "180px", "marginTop": "2px"},
+        children=[
+            dcc.Dropdown(
+                id="hotspots-chr-selector",
+                options=(
+                    [{"label": "All Chromosomes", "value": "All"}]
+                    + [{"label": f"Chr {c}", "value": str(c)} for c in range(1, 23)]
+                    + [{"label": "Chr X", "value": "X"}, {"label": "Chr Y", "value": "Y"}]
+                ),
+                value=default_chr,
+                clearable=False,
+                style=dd_style,
+            )
+        ]
+    )
+
+    # Plot area stretching to full width and height
+    plot_area = html.Div(
+        style={
+            "flex": "1",
+            "display": "flex",
+            "flexDirection": "column",
+            "minWidth": "0",
+            "minHeight": "0"
+        },
         children=[
             dcc.Loading(
                 type="circle",
@@ -22,25 +49,23 @@ def HotspotCard() -> html.Div:
                 children=dcc.Graph(
                     id="hotspots-plot",
                     config={"displayModeBar": True, "responsive": True},
-                    style={"height": "100%", "minHeight": "280px"},
+                    style={"height": "100%", "minHeight": "240px"},
                 )
             )
         ]
     )
 
-    details_col = html.Div(
+    # Footer element for highlighted gene details (updated via callback)
+    footer_details = html.Div(
         id="hotspots-details-card",
-        className="side-details-panel",
-        children=[],
-        style={"width": "220px", "flexShrink": "0"},
+        className="hotspots-footer-content"
     )
 
     return viz_card(
         card_id="card-hotspot",
         title="Chromosomal Hotspot Mapping",
         subtitle="Where are the highest-variance genes physically located across the genome?",
-        children=html.Div(
-            style={"display": "flex", "gap": "1rem", "flex": "1"},
-            children=[plot_col, details_col]
-        ),
+        children=plot_area,
+        footer=footer_details,
+        header_right=chr_dropdown
     )

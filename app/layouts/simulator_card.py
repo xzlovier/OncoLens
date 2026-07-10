@@ -1,148 +1,174 @@
 """
 Simulator Card – Interactive Virtual Expression Assayer.
 
-Full-width row spanning the bottom of the dashboard.
-Controls: Patient selector (in ControlBar), Gene 1/2/3 selectors and sliders (here).
+Two-panel scientific workspace: left control panel, right results panel.
 """
 
 from dash import html, dcc
 from app.layouts.viz_card import viz_card
-from app.layouts.theme import COLOR_ACCENT_DANGER, COLOR_BORDER, COLOR_TEXT_SECONDARY
 from app.config import DEFAULT_SIM_GENE_1, DEFAULT_SIM_GENE_2, DEFAULT_SIM_GENE_3
 
 
 def SimulatorCard(
     gene_options: list,
+    patient_options: list,
+    default_patient: str,
     val1: float = 5.0,
     val2: float = 5.0,
     val3: float = 5.0,
 ) -> html.Div:
     """
-    Returns the full-width simulator card.
-
-    Parameters
-    ----------
-    gene_options : list
-        List of {"label": ..., "value": ...} dicts for gene dropdowns.
-    val1, val2, val3 : float
-        Initial slider values (baseline expression for default patient).
+    Two-column simulator card.
+    Left: compact experiment controls.  Right: similarity chart + result panels.
     """
-    # ── Left column: gene selectors + sliders ────────────────────────────────
+    dd_style = {"color": "#1F2937", "fontSize": "0.82rem"}
+
+    # ── LEFT COLUMN: Control Panel ────────────────────────────────────────────
+
     left_col = html.Div(
-        className="sim-left-col",
+        className="sim2-left",
         children=[
-            # Gene selectors
+            # Patient selector + Reset
             html.Div(
-                className="sim-gene-selectors",
+                className="sim2-patient-row",
                 children=[
-                    _gene_row("Gene 1", "simulator-gene-1", gene_options, DEFAULT_SIM_GENE_1),
-                    _gene_row("Gene 2", "simulator-gene-2", gene_options, DEFAULT_SIM_GENE_2),
-                    _gene_row("Gene 3", "simulator-gene-3", gene_options, DEFAULT_SIM_GENE_3),
+                    html.Div(style={"flex": "1"}, children=[
+                        html.Label("Patient", className="ctrl-label"),
+                        dcc.Dropdown(
+                            id="simulator-patient-selector",
+                            options=patient_options,
+                            value=default_patient,
+                            clearable=False,
+                            searchable=True,
+                            style=dd_style,
+                        ),
+                    ]),
+                    html.Button(
+                        "↺ Reset",
+                        id="simulator-reset-btn",
+                        n_clicks=0,
+                        className="btn-reset",
+                        style={"padding": "4px 10px", "fontSize": "0.72rem",
+                               "alignSelf": "flex-end", "marginBottom": "1px"},
+                    ),
                 ]
             ),
-            # Sliders
-            html.Div(
-                className="sim-sliders",
-                children=[
-                    _slider_row("simulator-slider-label-1", "simulator-slider-1", val1),
-                    _slider_row("simulator-slider-label-2", "simulator-slider-2", val2),
-                    _slider_row("simulator-slider-label-3", "simulator-slider-3", val3),
-                ]
-            ),
+
+            # Gene controls: each gene dropdown followed immediately by its slider
+            _gene_block("Gene 1", "simulator-gene-1", DEFAULT_SIM_GENE_1,
+                         "simulator-slider-label-1", "simulator-slider-1", val1, gene_options, dd_style),
+            _gene_block("Gene 2", "simulator-gene-2", DEFAULT_SIM_GENE_2,
+                         "simulator-slider-label-2", "simulator-slider-2", val2, gene_options, dd_style),
+            _gene_block("Gene 3", "simulator-gene-3", DEFAULT_SIM_GENE_3,
+                         "simulator-slider-label-3", "simulator-slider-3", val3, gene_options, dd_style),
         ]
     )
 
-    # ── Middle column: probability bar chart ─────────────────────────────────
-    mid_col = html.Div(
-        className="sim-chart-col",
+    # ── RIGHT COLUMN: Results Panel ───────────────────────────────────────────
+
+    # Custom HTML legend centered horizontally, one single row
+    legend_items = [
+        ("Ependymoma", "#3b82f6"),
+        ("Glioblastoma", "#ef4444"),
+        ("Medulloblastoma", "#8b5cf6"),
+        ("Normal", "#10b981"),
+        ("Pilocytic Astrocytoma", "#f59e0b")
+    ]
+    
+    html_legend = html.Div(
+        className="sim2-html-legend",
         children=[
-            html.H4(
-                "Relative Similarity to Disease Centroids",
-                className="sim-chart-title"
-            ),
-            dcc.Loading(
-                type="circle",
-                color="#2563EB",
-                children=dcc.Graph(
-                    id="simulator-plot",
-                    config={"responsive": True, "displayModeBar": False},
-                    style={"height": "100%", "minHeight": "220px"},
-                )
-            ),
+            html.Div(
+                style={"display": "flex", "alignItems": "center", "gap": "4px", "marginRight": "12px"},
+                children=[
+                    html.Span(
+                        style={
+                            "display": "inline-block",
+                            "width": "10px",
+                            "height": "10px",
+                            "backgroundColor": color,
+                            "borderRadius": "2px"
+                        }
+                    ),
+                    html.Span(name, style={"fontSize": "10px", "fontWeight": "600", "color": "#4B5563"})
+                ]
+            ) for name, color in legend_items
         ]
     )
 
-    # ── Right column: prediction card + distance card ─────────────────────────
     right_col = html.Div(
-        className="sim-right-col",
+        className="sim2-right",
         children=[
-            html.Div(id="simulator-prediction-card", className="sim-result-card"),
-            html.Div(id="simulator-distance-card", className="sim-result-card"),
+            # Custom HTML Legend
+            html_legend,
+
+            # Large similarity chart (primary visual)
+            html.Div(
+                className="sim2-chart",
+                children=[
+                    dcc.Loading(
+                        type="circle",
+                        color="#2563EB",
+                        children=dcc.Graph(
+                            id="simulator-plot",
+                            config={"responsive": True, "displayModeBar": False},
+                            style={"height": "100%"},
+                        ),
+                    ),
+                ]
+            ),
+
+            # Compact result panels side-by-side
+            html.Div(
+                className="sim2-results",
+                children=[
+                    html.Div(id="simulator-prediction-card", className="sim2-result-panel"),
+                    html.Div(id="simulator-distance-card", className="sim2-result-panel"),
+                ]
+            ),
         ]
     )
+
+    # ── DISCLAIMER FOOTER ─────────────────────────────────────────────────────
 
     disclaimer = html.Div(
-        className="sim-disclaimer",
+        className="sim2-disclaimer",
         children=[
-            html.Strong("⚠ Research Disclosure: ", style={"color": "#D97706"}),
-            "Exploratory computational simulator only. Not a clinical diagnostic tool. "
-            "Probabilities reflect mathematical sensitivity of a centroid-distance classifier "
-            "to hypothetical expression changes, not clinical predictions."
+            html.Strong("⚠ ", style={"color": "#D97706"}),
+            "Research tool only — not a clinical diagnostic instrument.",
         ]
     )
 
     return viz_card(
         card_id="card-simulator",
         title="Interactive Virtual Expression Assayer",
-        subtitle=(
-            "How does perturbing a gene's expression level shift the predicted "
-            "tumor subtype similarity?"
-        ),
+        subtitle="How does perturbing a gene's expression level shift predicted subtype similarity?",
         children=html.Div(
-            className="sim-body",
-            children=[left_col, mid_col, right_col]
+            className="sim2-body",
+            children=[left_col, right_col],
         ),
         footer=disclaimer,
         extra_class="viz-card--full-width",
     )
 
 
-# ── Private helpers ───────────────────────────────────────────────────────────
+# ── Private helper ────────────────────────────────────────────────────────────
 
-def _gene_row(label: str, dropdown_id: str, options: list, default_val: str) -> html.Div:
+def _gene_block(label, dd_id, dd_default, lbl_id, slider_id, val, options, dd_style):
+    """One gene dropdown stacked directly above its slider."""
     return html.Div(
-        className="sim-gene-row",
+        className="sim2-gene-block",
         children=[
             html.Label(label, className="ctrl-label"),
             dcc.Dropdown(
-                id=dropdown_id,
-                options=options,
-                value=default_val,
-                clearable=False,
-                searchable=True,
-                style={"color": "#1F2937", "fontSize": "0.82rem"},
-            )
-        ]
-    )
-
-
-def _slider_row(label_id: str, slider_id: str, initial_value: float) -> html.Div:
-    return html.Div(
-        className="sim-slider-row",
-        children=[
-            html.Div(
-                id=label_id,
-                className="sim-slider-label",
-                style={"display": "flex", "justifyContent": "space-between"},
+                id=dd_id, options=options, value=dd_default,
+                clearable=False, searchable=True, style=dd_style,
             ),
+            html.Div(id=lbl_id, className="sim2-slider-label"),
             dcc.Slider(
-                id=slider_id,
-                min=0,
-                max=15,
-                step=0.01,
-                value=initial_value,
-                tooltip={"placement": "bottom", "always_visible": True},
+                id=slider_id, min=0, max=15, step=0.01, value=val,
+                tooltip={"placement": "bottom", "always_visible": False},
                 marks=None,
-            )
+            ),
         ]
     )

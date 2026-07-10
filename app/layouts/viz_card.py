@@ -16,6 +16,7 @@ def viz_card(
     children,
     footer=None,
     extra_class: str = "",
+    header_right=None,
 ) -> html.Div:
     """
     Returns a white rounded card containing a viz panel.
@@ -34,13 +35,30 @@ def viz_card(
         Optional compact footer element.
     extra_class : str
         Additional CSS class names for the card.
+    header_right : optional
+        Optional element placed on the right side of the card header.
     """
-    header = html.Div(
-        className="viz-card-header",
+    header_left = html.Div(
+        style={"flex": "1", "minWidth": "0"},
         children=[
             html.H3(title, className="viz-card-title"),
             html.P(subtitle, className="viz-card-subtitle"),
         ]
+    )
+
+    header_children = [header_left]
+    if header_right is not None:
+        header_children.append(
+            html.Div(
+                className="viz-card-header-right",
+                style={"marginLeft": "1rem", "flexShrink": "0"},
+                children=header_right
+            )
+        )
+
+    header = html.Div(
+        className="viz-card-header",
+        children=header_children,
     )
 
     body = html.Div(

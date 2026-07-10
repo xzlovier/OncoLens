@@ -142,6 +142,77 @@ def make_pair_quality_card_content(sil_score: float, interpretation: str, color:
     ]
 
 
+def make_contour_footer_content(
+    symbol_x: str,
+    rank_x: str,
+    chrom_x: str,
+    symbol_y: str,
+    rank_y: str,
+    chrom_y: str,
+    sil_score: Optional[float],
+    interpretation: Optional[str],
+) -> list:
+    """
+    Renders the compact two-column contour footer.
+    """
+    separation_text = f"★ {interpretation.replace(' separation', '')}" if interpretation else "—"
+    silhouette_text = f"{sil_score:.3f}" if sil_score is not None else "—"
+
+    return [
+html.Div(
+    className="contour-footer-col contour-footer-left",
+    children=[
+
+            html.Div(
+                className="contour-footer-line",
+                children=[
+                    html.Span("Gene X: ", className="contour-footer-label"),
+                    html.Span(symbol_x, className="contour-footer-value"),
+                    html.Span(f" • Rank #{rank_x} • {chrom_x}",
+                            className="contour-footer-meta"),
+                ],
+            ),
+
+            html.Div(
+                className="contour-footer-line",
+                children=[
+                    html.Span("Gene Y: ", className="contour-footer-label"),
+                    html.Span(symbol_y, className="contour-footer-value"),
+                    html.Span(f" • Rank #{rank_y} • {chrom_y}",
+                            className="contour-footer-meta"),
+                ],
+            ),
+
+        ],
+    ),
+        html.Div(className="contour-footer-divider"),
+            html.Div(
+            className="contour-footer-col contour-footer-right",
+            children=[
+
+                html.Div(
+                    className="contour-footer-line",
+                    children=[
+                        html.Span("Separation: ", className="contour-footer-label"),
+                        html.Span(separation_text,
+                                className="contour-footer-quality"),
+                    ],
+                ),
+
+                html.Div(
+                    className="contour-footer-line",
+                    children=[
+                        html.Span("Silhouette: ", className="contour-footer-label"),
+                        html.Span(silhouette_text,
+                                className="contour-footer-sil"),
+                    ],
+                ),
+
+            ],
+        ),
+    ]
+
+
 def register_callbacks(
     app: Dash, 
     df_expression: pd.DataFrame, 
@@ -323,14 +394,12 @@ def register_callbacks(
     # --------------------------------------------------------------------------
     @app.callback(
         [Output("contour-plot", "figure"),
-         Output("stats-card-x", "children"),
-         Output("stats-card-y", "children"),
-         Output("stats-card-quality", "children")],
+         Output("contour-footer", "children")],
         [Input("dropdown-x", "value"),
          Input("dropdown-y", "value"),
          Input("contour-display-toggle", "value")]
     )
-    def update_contour_plot(probe_x: str, probe_y: str, display_mode: str) -> Tuple[go.Figure, list, list, list]:
+    def update_contour_plot(probe_x: str, probe_y: str, display_mode: str) -> Tuple[go.Figure, list]:
         """
         Updates the 2D contour-scatter visualization, calculates statistics, and evaluates separation quality.
         """
@@ -348,7 +417,16 @@ def register_callbacks(
                 xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
                 yaxis=dict(showgrid=False, zeroline=False, showticklabels=False)
             )
-            return empty_fig, [html.P("No gene selected.")], [html.P("No gene selected.")], [html.P("No gene selected.")]
+            return empty_fig, make_contour_footer_content(
+                symbol_x="No gene selected.",
+                rank_x="—",
+                chrom_x="—",
+                symbol_y="No gene selected.",
+                rank_y="—",
+                chrom_y="—",
+                sil_score=None,
+                interpretation=None,
+            )
 
         # B. Get annotations for selected genes
         ann_x = df_annot_global[df_annot_global["ProbeID"] == probe_x]
@@ -372,36 +450,24 @@ def register_callbacks(
                 plot_bgcolor=PLOT_PLOT_BG,
                 paper_bgcolor=PLOT_PAPER_BG
             )
-            return error_fig, [html.P("Error loading gene.")], [html.P("Error loading gene.")], [html.P("Error loading pair.")]
+            return error_fig, make_contour_footer_content(
+                symbol_x="Error loading gene.",
+                rank_x="—",
+                chrom_x="—",
+                symbol_y="Error loading gene.",
+                rank_y="—",
+                chrom_y="—",
+                sil_score=None,
+                interpretation=None,
+            )
 
         # E. Calculate expression statistics across all samples
         expr_x = df_expr_global[probe_x]
         expr_y = df_expr_global[probe_y]
-        
-        # F. Generate statistics card layouts
-        card_x_content = make_stats_card_content(
-            gene_symbol=symbol_x,
-            probe_id=probe_x,
-            chrom=ann_x.iloc[0]["Chromosome"] if not ann_x.empty else None,
-            cytoband=ann_x.iloc[0]["Cytoband"] if not ann_x.empty else None,
-            rank=rank_x,
-            mean_val=expr_x.mean(),
-            std_val=expr_x.std(),
-            min_val=expr_x.min(),
-            max_val=expr_x.max()
-        )
-        
-        card_y_content = make_stats_card_content(
-            gene_symbol=symbol_y,
-            probe_id=probe_y,
-            chrom=ann_y.iloc[0]["Chromosome"] if not ann_y.empty else None,
-            cytoband=ann_y.iloc[0]["Cytoband"] if not ann_y.empty else None,
-            rank=rank_y,
-            mean_val=expr_y.mean(),
-            std_val=expr_y.std(),
-            min_val=expr_y.min(),
-            max_val=expr_y.max()
-        )
+        chrom_x = ann_x.iloc[0]["Chromosome"] if not ann_x.empty else None
+        chrom_y = ann_y.iloc[0]["Chromosome"] if not ann_y.empty else None
+        chrom_x_text = f"Chr{chrom_x}" if pd.notna(chrom_x) and str(chrom_x) != "None" else "Chr?"
+        chrom_y_text = f"Chr{chrom_y}" if pd.notna(chrom_y) and str(chrom_y) != "None" else "Chr?"
         
         # G. Compute Silhouette separation score
         # Extract features and scale for scale independence
@@ -528,18 +594,28 @@ def register_callbacks(
             hovermode="closest"
         )
         
-        return fig, card_x_content, card_y_content, card_quality_content
+        return fig, make_contour_footer_content(
+            symbol_x=symbol_x,
+            rank_x=str(rank_x),
+            chrom_x=chrom_x_text,
+            symbol_y=symbol_y,
+            rank_y=str(rank_y),
+            chrom_y=chrom_y_text,
+            sil_score=sil,
+            interpretation=interpretation,
+        )
 
     # --------------------------------------------------------------------------
     # 5. Chromosomal Hotspot Plot Callback
     # --------------------------------------------------------------------------
     @app.callback(
         Output("hotspots-plot", "figure"),
-        Input("hotspots-chr-selector", "value")
+        [Input("hotspots-chr-selector", "value"),
+         Input("hotspots-plot", "clickData")]
     )
-    def update_hotspots_plot(selected_chr: str) -> go.Figure:
+    def update_hotspots_plot(selected_chr: str, click_data: Optional[dict]) -> go.Figure:
         """
-        Renders the chromosomal hotspot mapping chart based on selector filter.
+        Renders the chromosomal hotspot mapping chart with selection highlighting.
         """
         # Filter for annotated genes that have valid chromosome coordinates
         df_plot = df_annot_global.dropna(subset=["Chromosome", "Genomic Start"]).copy()
@@ -558,14 +634,26 @@ def register_callbacks(
             chroms_order = [f"Chr{selected_chr}"]
 
         df_plot["ChrTrack"] = "Chr" + df_plot["Chromosome"].astype(str)
-        
+        # Adaptive layout styling based on overview ("All") vs detail (single chromosome) selection
+        if selected_chr == "All":
+            base_size = 3.0
+            scale_coeff = 9.0
+            selected_marker_size = 18.0
+            selected_marker_outline_width = 2.0
+        else:
+            base_size = 8.0
+            scale_coeff = 18.0
+            selected_marker_size = 30.0
+            selected_marker_outline_width = 3.0
+            
         # Size scaling: map variance to marker size
         var_min = df_plot["Variance"].min()
         var_max = df_plot["Variance"].max()
         var_range = var_max - var_min if var_max > var_min else 1.0
         
-        # Marker sizes bounded between 6 and 22
-        marker_sizes = 6 + 16 * (df_plot["Variance"] - var_min) / var_range
+        # Square-root scaling to normalize the visual distribution of marker sizes
+        normalized_variance = (df_plot["Variance"] - var_min) / var_range
+        marker_sizes = base_size + scale_coeff * np.sqrt(normalized_variance)
         
         fig.add_trace(go.Scatter(
             x=df_plot["Genomic Start"],
@@ -580,9 +668,11 @@ def register_callbacks(
                     title=dict(
                         text="Variance Rank",
                         side="right",
-                        font=dict(color="#cbd5e1")
+                        font=dict(color="#cbd5e1", size=10)
                     ),
-                    tickfont=dict(color="#94a3b8")
+                    tickfont=dict(color="#94a3b8", size=9),
+                    len=0.92,      # colorbar height prominence (92% of plot height)
+                    thickness=15   # colorbar width prominence (reduced to 15px)
                 ),
                 reversescale=True,
                 opacity=0.8,
@@ -599,24 +689,55 @@ def register_callbacks(
             )
         ))
         
+        # ── Highlighting Selected Gene Marker ──
+        selected_probe = None
+        if click_data and "points" in click_data:
+            pt = click_data["points"][0]
+            if "customdata" in pt:
+                selected_probe = pt["customdata"]
+                
+        # Validate selected probe belongs to the filtered subset, else fallback to top-ranked of selected chromosome
+        if not selected_probe or selected_probe not in df_plot["ProbeID"].values:
+            if not df_plot.empty:
+                df_sorted = df_plot.dropna(subset=["Rank"]).sort_values(by="Rank")
+                if not df_sorted.empty:
+                    selected_probe = df_sorted.iloc[0]["ProbeID"]
+                    
+        if selected_probe and selected_probe in df_plot["ProbeID"].values:
+            df_sel = df_plot[df_plot["ProbeID"] == selected_probe]
+            if not df_sel.empty:
+                row_sel = df_sel.iloc[0]
+                fig.add_trace(go.Scatter(
+                    x=[row_sel["Genomic Start"]],
+                    y=[row_sel["ChrTrack"]],
+                    mode="markers",
+                    marker=dict(
+                        size=selected_marker_size,          # Selected marker size
+                        color="rgba(0,0,0,0)",              # Transparent fill
+                        line=dict(width=selected_marker_outline_width, color="#10B981") # Outline width and color
+                    ),
+                    showlegend=False,
+                    hoverinfo="skip"
+                ))
+        
         title_text = "Genome-Wide Expression Variance Hotspots" if selected_chr == "All" else f"Chromosome {selected_chr} Hotspot Loci"
         
         fig.update_layout(
             template=PLOT_TEMPLATE,
             title=dict(
                 text=title_text,
-                font=dict(size=16, color=PLOT_TITLE_COLOR, family="Outfit")
+                font=dict(size=14, color=PLOT_TITLE_COLOR, family="Outfit")
             ),
             xaxis=dict(
-                title=dict(text="Genomic Coordinate (Base Pairs)", font=dict(color=PLOT_AXIS_LABEL_COLOR, size=12)),
-                tickfont=dict(color=PLOT_TICK_COLOR),
+                title=dict(text="Genomic Coordinate (Base Pairs)", font=dict(color=PLOT_AXIS_LABEL_COLOR, size=11)),
+                tickfont=dict(color=PLOT_TICK_COLOR, size=10),
                 gridcolor=PLOT_GRID,
                 zerolinecolor=PLOT_ZEROLINE,
                 tickformat=","
             ),
             yaxis=dict(
-                title=dict(text="Chromosomal Tracks", font=dict(color=PLOT_AXIS_LABEL_COLOR, size=12)),
-                tickfont=dict(color=PLOT_TICK_COLOR),
+                title=dict(text="Chromosomal Tracks", font=dict(color=PLOT_AXIS_LABEL_COLOR, size=11)),
+                tickfont=dict(color=PLOT_TICK_COLOR, size=10),
                 gridcolor=PLOT_GRID,
                 type="category",
                 categoryarray=chroms_order,
@@ -624,8 +745,9 @@ def register_callbacks(
             ),
             plot_bgcolor=PLOT_PLOT_BG,
             paper_bgcolor=PLOT_PAPER_BG,
-            margin=dict(l=60, r=40, t=70, b=50),
-            hovermode="closest"
+            margin=dict(l=45, r=20, t=15, b=25), # Tight margins to completely use the canvas
+            hovermode="closest",
+            height=490 # height directly controls track-to-track row spacing
         )
         
         return fig
@@ -685,68 +807,35 @@ def register_callbacks(
         max_val = expr_vals.max()
         
         return [
-            html.H3("Highlighted Gene Details", style={"borderBottom": "1px solid #1e293b", "paddingBottom": "0.75rem", "color": "#f8fafc", "marginTop": "0"}),
             html.Div(
-                style={"display": "flex", "flexDirection": "column", "gap": "1.25rem", "marginTop": "1.5rem"},
+                className="hotspots-footer-container",
+                style={
+                    "display": "flex",
+                    "justifyContent": "space-between",
+                    "alignItems": "center",
+                    "width": "100%",
+                    "fontSize": "0.75rem",
+                    "color": "#4B5563"
+                },
                 children=[
-                    html.Div([
-                        html.Span("Gene Symbol", style={"fontSize": "0.85rem", "color": "#64748b", "display": "block"}),
-                        html.Strong(symbol, style={"color": "#3b82f6", "fontSize": "1.6rem", "fontFamily": "Outfit"})
-                    ]),
-                    html.Div([
-                        html.Span("Probe Set ID", style={"fontSize": "0.85rem", "color": "#64748b", "display": "block"}),
-                        html.Strong(probe_id, style={"color": "#f8fafc", "fontSize": "1.1rem"})
-                    ]),
                     html.Div(
-                        style={"display": "grid", "gridTemplateColumns": "1fr 1fr", "gap": "1rem"},
                         children=[
-                            html.Div([
-                                html.Span("Chromosome", style={"fontSize": "0.85rem", "color": "#64748b", "display": "block"}),
-                                html.Strong(f"Chr {chrom}" if pd.notna(chrom) else "Unmapped", style={"color": "#cbd5e1", "fontSize": "1rem"})
-                            ]),
-                            html.Div([
-                                html.Span("Cytoband", style={"fontSize": "0.85rem", "color": "#64748b", "display": "block"}),
-                                html.Strong(cytoband if pd.notna(cytoband) else "Unmapped", style={"color": "#cbd5e1", "fontSize": "1rem"})
-                            ])
+                            html.Span("Selected Gene: ", style={"color": "#6B7280", "fontWeight": "500"}),
+                            html.Strong(symbol, style={"color": "#3B82F6", "fontSize": "0.85rem", "fontFamily": "Outfit"}),
+                            html.Span("  •  ", style={"color": "#D1D5DB"}),
+                            html.Span("Rank ", style={"color": "#6B7280"}),
+                            html.Strong(f"#{int(rank)}" if pd.notna(rank) else "#—", style={"color": "#F59E0B", "fontSize": "0.85rem"}),
                         ]
                     ),
                     html.Div(
-                        style={"display": "grid", "gridTemplateColumns": "1fr 1fr", "gap": "1rem"},
                         children=[
-                            html.Div([
-                                html.Span("Genomic Start (bp)", style={"fontSize": "0.85rem", "color": "#64748b", "display": "block"}),
-                                html.Strong(f"{int(row['Genomic Start']):,}" if pd.notna(row['Genomic Start']) else "Unmapped", style={"color": "#cbd5e1", "fontSize": "1rem"})
-                            ]),
-                            html.Div([
-                                html.Span("Variance Rank", style={"fontSize": "0.85rem", "color": "#64748b", "display": "block"}),
-                                html.Strong(f"#{int(rank)}" if pd.notna(rank) else "N/A", style={"color": "#f59e0b", "fontSize": "1rem"})
-                            ])
-                        ]
-                    ),
-                    html.Div(
-                        style={"display": "grid", "gridTemplateColumns": "1fr 1fr", "gap": "1rem"},
-                        children=[
-                            html.Div([
-                                html.Span("Expression Variance", style={"fontSize": "0.85rem", "color": "#64748b", "display": "block"}),
-                                html.Strong(f"{variance:.4f}" if pd.notna(variance) else "N/A", style={"color": "#cbd5e1", "fontSize": "1rem"})
-                            ]),
-                            html.Div([
-                                html.Span("Mean Expression", style={"fontSize": "0.85rem", "color": "#64748b", "display": "block"}),
-                                html.Strong(f"{mean_val:.4f}", style={"color": "#cbd5e1", "fontSize": "1rem"})
-                            ])
-                        ]
-                    ),
-                    html.Div(
-                        style={"display": "grid", "gridTemplateColumns": "1fr 1fr", "gap": "1rem"},
-                        children=[
-                            html.Div([
-                                html.Span("Min Expression", style={"fontSize": "0.85rem", "color": "#64748b", "display": "block"}),
-                                html.Strong(f"{min_val:.4f}", style={"color": "#cbd5e1", "fontSize": "1rem"})
-                            ]),
-                            html.Div([
-                                html.Span("Max Expression", style={"fontSize": "0.85rem", "color": "#64748b", "display": "block"}),
-                                html.Strong(f"{max_val:.4f}", style={"color": "#cbd5e1", "fontSize": "1rem"})
-                            ])
+                            html.Span(f"Chr {chrom} • " if pd.notna(chrom) else "Unmapped • ", style={"fontWeight": "600", "color": "#374151"}),
+                            html.Span(f"Cytoband {cytoband} • " if pd.notna(cytoband) else ""),
+                            html.Span("Variance ", style={"color": "#6B7280"}),
+                            html.Strong(f"{variance:.4f}" if pd.notna(variance) else "—", style={"color": "#374151"}),
+                            html.Span("  •  ", style={"color": "#D1D5DB"}),
+                            html.Span("Mean Expression ", style={"color": "#6B7280"}),
+                            html.Strong(f"{mean_val:.2f}", style={"color": "#374151"}),
                         ]
                     )
                 ]
@@ -965,6 +1054,7 @@ def register_callbacks(
                 text=title_text,
                 font=dict(size=16, color=PLOT_TITLE_COLOR, family="Outfit")
             ),
+            height=360,
             xaxis=dict(
                 showgrid=False,
                 zeroline=False,
@@ -996,63 +1086,80 @@ def register_callbacks(
             
             deg = degrees.get(target_probe, 0)
             
-            card_content = [
-                html.H3("Network Details", style={"borderBottom": "1px solid #1e293b", "paddingBottom": "0.75rem", "color": "#f8fafc", "marginTop": "0"}),
-                html.Div(
-                    style={"display": "flex", "flexDirection": "column", "gap": "1.25rem", "marginTop": "1.5rem"},
-                    children=[
-                        html.Div([
-                            html.Span("Selected Gene", style={"fontSize": "0.85rem", "color": "#64748b", "display": "block"}),
-                            html.Strong(symbol, style={"color": "#10b981" if clicked_probe else "#3b82f6", "fontSize": "1.6rem", "fontFamily": "Outfit"})
-                        ]),
-                        html.Div([
-                            html.Span("Probe Set ID", style={"fontSize": "0.85rem", "color": "#64748b", "display": "block"}),
-                            html.Strong(target_probe, style={"color": "#f8fafc", "fontSize": "1.1rem"})
-                        ]),
-                        html.Div(
-                            style={"display": "grid", "gridTemplateColumns": "1fr 1fr", "gap": "1rem"},
-                            children=[
-                                html.Div([
-                                    html.Span("Chromosome", style={"fontSize": "0.85rem", "color": "#64748b", "display": "block"}),
-                                    html.Strong(f"Chr {chrom}" if pd.notna(chrom) else "Unmapped", style={"color": "#cbd5e1", "fontSize": "1rem"})
-                                ]),
-                                html.Div([
-                                    html.Span("Cytoband", style={"fontSize": "0.85rem", "color": "#64748b", "display": "block"}),
-                                    html.Strong(cytoband if pd.notna(cytoband) else "Unmapped", style={"color": "#cbd5e1", "fontSize": "1rem"})
-                                ])
-                            ]
-                        ),
-                        html.Div(
-                            style={"display": "grid", "gridTemplateColumns": "1fr 1fr", "gap": "1rem"},
-                            children=[
-                                html.Div([
-                                    html.Span("Genomic Start (bp)", style={"fontSize": "0.85rem", "color": "#64748b", "display": "block"}),
-                                    html.Strong(f"{int(row['Genomic Start']):,}" if pd.notna(row['Genomic Start']) else "Unmapped", style={"color": "#cbd5e1", "fontSize": "1rem"})
-                                ]),
-                                html.Div([
-                                    html.Span("Variance Rank", style={"fontSize": "0.85rem", "color": "#64748b", "display": "block"}),
-                                    html.Strong(f"#{int(rank)}" if pd.notna(rank) else "N/A", style={"color": "#f59e0b", "fontSize": "1rem"})
-                                ])
-                            ]
-                        ),
-                        html.Div(
-                            style={"display": "grid", "gridTemplateColumns": "1fr 1fr", "gap": "1rem"},
-                            children=[
-                                html.Div([
-                                    html.Span("Expression Variance", style={"fontSize": "0.85rem", "color": "#64748b", "display": "block"}),
-                                    html.Strong(f"{variance:.4f}" if pd.notna(variance) else "N/A", style={"color": "#cbd5e1", "fontSize": "1rem"})
-                                ]),
-                                html.Div([
-                                    html.Span("Neighbors (r ≥ {0:.2f})".format(threshold), style={"fontSize": "0.85rem", "color": "#64748b", "display": "block"}),
-                                    html.Strong(str(deg), style={"color": "#10b981" if deg > 0 else "#64748b", "fontSize": "1.1rem"})
-                                ])
-                            ]
-                        )
-                    ]
-                )
-            ]
+            card_content = html.Div(
+                className="network-footer",
+                children=[
+                    # Left column
+                    html.Div(
+                        className="network-footer-col network-footer-left",
+                        children=[
+                            html.Div(
+                                className="network-footer-line",
+                                children=[
+                                    html.Span("Selected Gene: ", className="network-footer-label"),
+                                    html.Span(symbol, className="network-footer-value network-footer-value--blue" if clicked_probe else "network-footer-value"),
+                                ]
+                            ),
+                            html.Div(
+                                className="network-footer-line",
+                                children=[
+                                    html.Span("Probe: ", className="network-footer-label"),
+                                    html.Span(target_probe, className="network-footer-value"),
+                                ]
+                            ),
+                            html.Div(
+                                className="network-footer-line",
+                                children=[
+                                    html.Span(f"Rank #{int(rank)}" if pd.notna(rank) else "Rank N/A", className="network-footer-value--amber"),
+                                    html.Span(" • ", style={"color": "#D1D5DB"}),
+                                    html.Span(f"Chr {chrom}" if pd.notna(chrom) else "Chr N/A", className="network-footer-value"),
+                                ]
+                            ),
+                        ]
+                    ),
+                    
+                    # Vertical divider line
+                    html.Div(className="network-footer-divider"),
+                    
+                    # Right column
+                    html.Div(
+                        className="network-footer-col network-footer-right",
+                        children=[
+                            html.Div(
+                                className="network-footer-line",
+                                style={"justifyContent": "flex-end"},
+                                children=[
+                                    html.Span("Neighbors: ", className="network-footer-label"),
+                                    html.Span(str(deg), className="network-footer-value network-footer-value--green" if deg > 0 else "network-footer-value"),
+                                ]
+                            ),
+                            html.Div(
+                                className="network-footer-line",
+                                style={"justifyContent": "flex-end"},
+                                children=[
+                                    html.Span("Degree: ", className="network-footer-label"),
+                                    html.Span(str(deg), className="network-footer-value"),
+                                ]
+                            ),
+                            html.Div(
+                                className="network-footer-line",
+                                style={"justifyContent": "flex-end"},
+                                children=[
+                                    html.Span("Threshold: ", className="network-footer-label"),
+                                    html.Span("r ≥ {0:.2f}".format(threshold), className="network-footer-value network-footer-value--blue"),
+                                ]
+                            ),
+                        ]
+                    )
+                ]
+            )
         else:
-            card_content = [html.P("Gene details unavailable.")]
+            card_content = html.Div(
+                className="network-footer",
+                children=[
+                    html.Div("Gene details unavailable.", className="network-footer-line", style={"fontSize": "10px", "color": "#6B7280"})
+                ]
+            )
             
         return fig, card_content
 
@@ -1522,53 +1629,83 @@ def register_callbacks(
             print(f"Has Inf: {bool(np.isinf(probabilities).any())}")
             print(f"Lengths check - Subtypes: {len(y_labels_reversed)}, Probs: {len(prob_percentages_reversed)}, Colors: {len(bar_colors_reversed)}, Opacities: {len(opacities_reversed)}")
             
+            # Sort subtypes alphabetically so they match the Contour plot legend ordering:
+            # Ependymoma, Glioblastoma, Medulloblastoma, Normal, Pilocytic Astrocytoma
+            alphabetical_subtypes = ["ependymoma", "glioblastoma", "medulloblastoma", "normal", "pilocytic_astrocytoma"]
+            
+            x_vals = []
+            y_names = []
+            colors = []
+            opacities_list = []
+            text_labels = []
+            hover_texts = []
+            
+            for subtype in alphabetical_subtypes:
+                idx = subtype_names_list.index(subtype)
+                prob = probabilities[idx] * 100
+                opacity = 1.0 if idx == max_idx else 0.55
+                color = color_map.get(subtype, "#cbd5e1")
+                display_name = subtype.replace("_", " ").title()
+                
+                x_vals.append(prob)
+                y_names.append(display_name)
+                colors.append(color)
+                opacities_list.append(opacity)
+                text_labels.append(f" {prob:.1f}%")
+                hover_texts.append(f"<b>{display_name}</b><br>Similarity: {prob:.2f}%<extra></extra>")
+                
             fig = go.Figure()
             fig.add_trace(go.Bar(
-                x=prob_percentages_reversed,
-                y=y_labels_reversed,
+                x=x_vals,
+                y=y_names,
                 orientation="h",
+                width=0.8,  # Maximized bar thickness (occupies 80% of vertical slot)
                 marker=dict(
-                    color=bar_colors_reversed,
-                    opacity=opacities_reversed,
+                    color=colors,
+                    opacity=opacities_list,
                     line=dict(color="rgba(0,0,0,0.1)", width=1.0)
                 ),
-                text=[f" {p:.1f}%" for p in prob_percentages_reversed],
+                text=text_labels,
                 textposition="outside",
-                textfont=dict(color=PLOT_TITLE_COLOR, size=11, family="Inter"),
-                hovertemplate="<b>%{y}</b><br>Probability: %{x:.2f}%<extra></extra>"
+                textfont=dict(color=PLOT_TITLE_COLOR, size=12, family="Inter"),
+                hoverinfo="text",
+                hovertext=hover_texts,
+                showlegend=False
             ))
             
             fig.update_layout(
                 template=PLOT_TEMPLATE,
+                showlegend=False,  # Plotly legend completely removed
                 xaxis=dict(
-                    title=dict(text="Classification Probability (%)", font=dict(color=PLOT_AXIS_LABEL_COLOR, size=12)),
-                    tickfont=dict(color=PLOT_TICK_COLOR),
-                    gridcolor=PLOT_GRID,
-                    range=[0, 115],
+                    showgrid=False,   # Hide grid lines
+                    zeroline=False,
+                    tickfont=dict(color=PLOT_TICK_COLOR, size=10),
+                    range=[0, 100],   # Similarity scale up to 100%
                 ),
                 yaxis=dict(
-                    tickfont=dict(color=PLOT_TITLE_COLOR, size=12),
+                    showticklabels=False,  # Hide subtype names from Y-axis
+                    showgrid=False,        # Hide grid lines
                     type="category",
                 ),
                 plot_bgcolor=PLOT_PLOT_BG,
                 paper_bgcolor=PLOT_PAPER_BG,
-                margin=dict(l=20, r=45, t=15, b=40)
+                margin=dict(l=10, r=20, t=8, b=20)  # Restrict margins to completely fill container
             )
             
-            # 3. Predicted class card
+            # 3. Predicted class card (redesigned for compact light theme)
             predicted_subtype = subtype_names_list[max_idx].replace("_", " ").title()
             subtype_color = color_map.get(subtype_names_list[max_idx], "#cbd5e1")
             
             prediction_card = [
-                html.H4("Predicted Subtype", style={"color": "#64748b", "fontSize": "0.9rem", "textTransform": "uppercase", "letterSpacing": "0.05em", "marginTop": "0", "marginBottom": "0.5rem"}),
-                html.Strong(predicted_subtype, style={"color": subtype_color, "fontSize": "1.75rem", "fontFamily": "Outfit", "display": "block", "marginBottom": "0.25rem"}),
+                html.H4("Predicted Subtype", style={"color": "#6B7280", "fontSize": "0.68rem", "textTransform": "uppercase", "letterSpacing": "0.05em", "marginTop": "0", "marginBottom": "0.2rem"}),
+                html.Strong(predicted_subtype, style={"color": subtype_color, "fontSize": "1.1rem", "fontFamily": "Outfit", "display": "block", "marginBottom": "0.15rem"}),
                 html.Span([
-                    html.Span("Confidence: ", style={"color": "#64748b", "fontSize": "0.9rem"}),
-                    html.Strong(f"{prediction_confidence:.1f}%", style={"color": "#f8fafc", "fontSize": "1.1rem"})
+                    html.Span("Confidence: ", style={"color": "#6B7280", "fontSize": "0.72rem"}),
+                    html.Strong(f"{prediction_confidence:.1f}%", style={"color": "#1F2937", "fontSize": "0.8rem"})
                 ])
             ]
             
-            # 4. Centroid distances list
+            # 4. Centroid distances list (redesigned for compact light theme)
             distance_items = []
             for i, subtype in enumerate(subtype_names_list):
                 display_name = subtype.replace("_", " ").title()
@@ -1576,15 +1713,15 @@ def register_callbacks(
                 
                 distance_items.append(
                     html.Div(
-                        style={"display": "flex", "justifyContent": "space-between", "alignItems": "center", "marginBottom": "0.4rem"},
+                        style={"display": "flex", "justifyContent": "space-between", "alignItems": "center", "marginBottom": "0.15rem"},
                         children=[
-                            html.Span(display_name, style={"color": "#cbd5e1", "fontSize": "0.9rem"}),
+                            html.Span(display_name, style={"color": "#374151", "fontSize": "0.72rem"}),
                             html.Span(
-                                f"{dist:.3f}", 
+                                f"{dist:.2f}", 
                                 style={
-                                    "color": "#10b981" if i == max_idx else "#94a3b8",
+                                    "color": "#10b981" if i == max_idx else "#4B5563",
                                     "fontWeight": "bold" if i == max_idx else "normal",
-                                    "fontSize": "0.95rem"
+                                    "fontSize": "0.75rem"
                                 }
                             )
                         ]
@@ -1592,7 +1729,7 @@ def register_callbacks(
                 )
                 
             distance_card = [
-                html.H4("Centroid Distances", style={"color": "#64748b", "fontSize": "0.9rem", "textTransform": "uppercase", "letterSpacing": "0.05em", "marginTop": "0", "marginBottom": "0.75rem", "borderBottom": "1px solid #1e293b", "paddingBottom": "0.5rem"}),
+                html.H4("Centroid Distances", style={"color": "#6B7280", "fontSize": "0.68rem", "textTransform": "uppercase", "letterSpacing": "0.05em", "marginTop": "0", "marginBottom": "0.3rem", "borderBottom": "1px solid #E5E7EB", "paddingBottom": "0.2rem"}),
                 html.Div(distance_items)
             ]
             

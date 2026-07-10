@@ -6,14 +6,82 @@ from dash import html, dcc
 from app.layouts.viz_card import viz_card
 
 
-def ContourCard() -> html.Div:
+def ContourCard(
+    gene_options: list,
+    top_20_options: list,
+    default_x: str,
+    default_y: str,
+) -> html.Div:
     """
-    Returns the viz card for the Multi-Gene Phenotypic Contour Plot.
+    Returns the self-contained viz card for the Multi-Gene Phenotypic Contour Plot.
 
-    Controls (Gene X, Gene Y, Demo Pair, Display Mode) live in the global
-    ControlBar. This card contains only the plot and the three stat cards
-    that callbacks populate dynamically.
+    Includes its own controls (Gene X, Gene Y, Demo Pair, Contour Mode) at the top,
+    and a compact footer for gene and separation metadata below the plot.
     """
+    dd_style = {"color": "#1F2937", "fontSize": "0.85rem"}
+    
+    # Card-specific controls row
+    controls_row = html.Div(
+        className="contour-toolbar",
+        children=[
+            html.Div(
+                className="toolbar-left",
+                children=[
+                    # Gene X
+                    html.Div(className="toolbar-control", children=[
+                        html.Label("Gene X", className="ctrl-label"),
+                        dcc.Dropdown(
+                            id="dropdown-x",
+                            options=gene_options,
+                            value=default_x,
+                            clearable=False,
+                            searchable=True,
+                            style=dd_style,
+                        )
+                    ]),
+                    # Gene Y
+                    html.Div(className="toolbar-control", children=[
+                        html.Label("Gene Y", className="ctrl-label"),
+                        dcc.Dropdown(
+                            id="dropdown-y",
+                            options=gene_options,
+                            value=default_y,
+                            clearable=False,
+                            searchable=True,
+                            style=dd_style,
+                        )
+                    ]),
+                    # Demo Pair
+                    html.Div(className="toolbar-control", children=[
+                        html.Label("Demo Pair", className="ctrl-label"),
+                        dcc.Dropdown(
+                            id="demo-pair-selector",
+                            options=top_20_options,
+                            value=1,
+                            clearable=True,
+                            style=dd_style,
+                        )
+                    ]),
+                ],
+            ),
+            html.Div(
+                className="toolbar-right",
+                children=[
+                    dcc.RadioItems(
+                        id="contour-display-toggle",
+                        options=[
+                            {"label": " Points", "value": "scatter"},
+                            {"label": " Points + Contours", "value": "both"},
+                        ],
+                        value="scatter",
+                        inline=False,
+                        className="contour-radio",
+                    ),
+                ],
+            ),
+        ],
+    )
+
     # Demo badge (hidden until default pair is active)
     demo_badge = html.Div(
         id="demo-badge",
@@ -37,32 +105,70 @@ def ContourCard() -> html.Div:
         }
     )
 
-    plot_area = html.Div([
-        demo_badge,
-        dcc.Loading(
-            type="circle",
-            color="#2563EB",
-            children=dcc.Graph(
-                id="contour-plot",
-                config={"displayModeBar": True, "responsive": True},
-                style={"height": "100%", "minHeight": "280px"},
-            )
-        ),
-    ], style={"flex": "1", "display": "flex", "flexDirection": "column"})
 
-    # Three statistics sub-cards below the graph
-    stats_row = html.Div(
-        className="contour-stats-row",
+
+    plot_area = html.Div(
         children=[
-            html.Div(id="stats-card-x", className="mini-stat-card"),
-            html.Div(id="stats-card-y", className="mini-stat-card"),
-            html.Div(id="stats-card-quality", className="mini-stat-card"),
-        ]
+            dcc.Loading(
+                type="circle",
+                color="#2563EB",
+                children=dcc.Graph(
+                    id="contour-plot",
+                    config={
+                        "displayModeBar": True,
+                        "responsive": True,
+                    },
+                    style={
+                        "height": "340px",      # try 340–350
+                        "width": "100%",
+                        "display": "block",
+                    },
+                ),
+            )
+        ],
+        style={
+            "margin-top": "2px",
+        },
     )
 
     return viz_card(
         card_id="card-contour",
         title="Multi-Gene Phenotypic Contour",
         subtitle="Do the expression patterns of two genes cleanly separate tumor subtypes?",
-        children=[plot_area, stats_row],
+        children=html.Div(
+            style={
+                "display": "flex",
+                "flexDirection": "column",
+                "flex": "1",
+                "minHeight": "0",
+            },
+            children=[
+
+                # ---------------------------------------------------------
+                # Toolbar
+                # ---------------------------------------------------------
+                controls_row,
+
+                # ---------------------------------------------------------
+                # Plot
+                # ---------------------------------------------------------
+                html.Div(
+                    style={
+                        "flex": "1",
+                        "minHeight": "0",
+                        "marginTop": "0",
+                    },
+                    children=[plot_area],
+                ),
+
+                # ---------------------------------------------------------
+                # Footer Statistics
+                # ---------------------------------------------------------
+                html.Div(
+                    id="contour-footer",
+                    className="contour-footer",
+                ),
+
+            ]
+        ),
     )
