@@ -109,6 +109,10 @@ def ContourCard(
 
     plot_area = html.Div(
         children=[
+            html.Div(
+                id="contour-plot-title",
+                className="plot-section-title",
+                ),
             dcc.Loading(
                 type="circle",
                 color="#2563EB",

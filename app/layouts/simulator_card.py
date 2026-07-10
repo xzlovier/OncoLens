@@ -66,31 +66,25 @@ def SimulatorCard(
 
     # ── RIGHT COLUMN: Results Panel ───────────────────────────────────────────
 
-    # Custom HTML legend centered horizontally, one single row
+    # Custom HTML legend — right-aligned, wraps into two rows, canonical order
     legend_items = [
-        ("Ependymoma", "#3b82f6"),
-        ("Glioblastoma", "#ef4444"),
-        ("Medulloblastoma", "#8b5cf6"),
-        ("Normal", "#10b981"),
-        ("Pilocytic Astrocytoma", "#f59e0b")
+        # Row 1
+        ("Normal",                "#10b981"),  # Emerald
+        ("Ependymoma",            "#3b82f6"),  # Blue
+        ("Glioblastoma",          "#ef4444"),  # Crimson
+        # Row 2
+        ("Medulloblastoma",       "#8b5cf6"),  # Purple
+        ("Pilocytic Astrocytoma", "#f59e0b"),  # Amber
     ]
-    
+
     html_legend = html.Div(
         className="sim2-html-legend",
         children=[
             html.Div(
-                style={"display": "flex", "alignItems": "center", "gap": "4px", "marginRight": "12px"},
+                className="sim2-legend-item",
                 children=[
-                    html.Span(
-                        style={
-                            "display": "inline-block",
-                            "width": "10px",
-                            "height": "10px",
-                            "backgroundColor": color,
-                            "borderRadius": "2px"
-                        }
-                    ),
-                    html.Span(name, style={"fontSize": "10px", "fontWeight": "600", "color": "#4B5563"})
+                    html.Span(className="sim2-legend-dot", style={"backgroundColor": color}),
+                    html.Span(name, className="sim2-legend-label"),
                 ]
             ) for name, color in legend_items
         ]
@@ -109,10 +103,12 @@ def SimulatorCard(
                     dcc.Loading(
                         type="circle",
                         color="#2563EB",
+                        parent_style={"height": "100%", "flex": "1 1 0", "display": "flex", "flexDirection": "column"},
                         children=dcc.Graph(
                             id="simulator-plot",
+                            className="dash-graph",
                             config={"responsive": True, "displayModeBar": False},
-                            style={"height": "100%"},
+                            style={"height": "100%", "flex": "1 1 0"},
                         ),
                     ),
                 ]

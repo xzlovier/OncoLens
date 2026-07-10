@@ -15,7 +15,7 @@ from typing import Tuple, Optional
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import silhouette_score
 import networkx as nx
-from dash import Input, Output, html, Dash, callback_context
+from dash import Input, Output, html, Dash, callback_context, no_update
 from app.layouts.theme import (
     PLOT_TEMPLATE,
     PLOT_PAPER_BG, PLOT_PLOT_BG, PLOT_GRID, PLOT_ZEROLINE,
@@ -394,6 +394,7 @@ def register_callbacks(
     # --------------------------------------------------------------------------
     @app.callback(
         [Output("contour-plot", "figure"),
+         Output("contour-plot-title", "children"),
          Output("contour-footer", "children")],
         [Input("dropdown-x", "value"),
          Input("dropdown-y", "value"),
@@ -513,7 +514,10 @@ def register_callbacks(
         show_contour = display_mode == "both"
         
         # Render each clinical class
-        for subtype in sorted(df_plot["type"].unique()):
+        # Canonical subtype order: Normal first, then the four tumour classes alphabetically
+        CANONICAL_ORDER = ["normal", "ependymoma", "glioblastoma", "medulloblastoma", "pilocytic_astrocytoma"]
+        present_subtypes = df_plot["type"].unique()
+        for subtype in [s for s in CANONICAL_ORDER if s in present_subtypes]:
             df_sub = df_plot[df_plot["type"] == subtype]
             x_vals = df_sub[probe_x].to_numpy()
             y_vals = df_sub[probe_y].to_numpy()
@@ -562,8 +566,14 @@ def register_callbacks(
         fig.update_layout(
             template=PLOT_TEMPLATE,
             title=dict(
-                text=f"Joint Gene Phenotyping: {symbol_x} vs {symbol_y}",
-                font=dict(size=16, color=PLOT_TITLE_COLOR, family="Outfit")
+                text=None,
+                font=dict(size=13, color=PLOT_TITLE_COLOR, family="Outfit"),
+                yref="paper",
+                y=0.99,
+                yanchor="top",
+                x=0.5,
+                xanchor="center",
+                pad=dict(t=4),
             ),
             xaxis=dict(
                 title=dict(text=f"{symbol_x} Expression ({probe_x})", font=dict(color=PLOT_AXIS_LABEL_COLOR, size=12)),
@@ -580,21 +590,22 @@ def register_callbacks(
             plot_bgcolor=PLOT_PLOT_BG,
             paper_bgcolor=PLOT_PAPER_BG,
             legend=dict(
-                font=dict(color=PLOT_TITLE_COLOR),
-                bgcolor="rgba(255,255,255,0.9)",
-                bordercolor=COLOR_BORDER,
-                borderwidth=1,
                 orientation="h",
+                xanchor="center",
+                x=0.5,
                 yanchor="bottom",
-                y=1.02,
-                xanchor="right",
-                x=1
+                y=1.0,
+                font=dict(color=PLOT_TITLE_COLOR, size=10),
+                bgcolor="rgba(0,0,0,0)",
+                borderwidth=0,
+                tracegroupgap=0,
+                traceorder="normal",
             ),
-            margin=dict(l=50, r=40, t=70, b=50),
+            margin=dict(l=50, r=40, t=75, b=50),
             hovermode="closest"
         )
         
-        return fig, make_contour_footer_content(
+        return fig, f"Joint Gene Phenotyping: {symbol_x} vs {symbol_y}",make_contour_footer_content(
             symbol_x=symbol_x,
             rank_x=str(rank_x),
             chrom_x=chrom_x_text,
@@ -1405,7 +1416,7 @@ def register_callbacks(
         # Ignore reset button initial render/mount triggers (when n_clicks is 0 or None)
         if triggered_id == "simulator-reset-btn" and (n_clicks is None or n_clicks == 0):
             print("  update_simulator_slider_bounds: Ignored reset button initial render trigger.")
-            return [dash.no_update] * 9
+            return [no_update] * 9
             
         if not patient_id:
             results = (0, 15, 5, 0, 15, 5, 0, 15, 5)
@@ -1510,21 +1521,6 @@ def register_callbacks(
             exp_scores = np.exp(scores / SIMULATOR_TEMPERATURE)
             probabilities = exp_scores / np.sum(exp_scores)
             
-            # Print formal run_simulation diagnostics
-            print("\n=== RUN_SIMULATION DIAGNOSTICS ===")
-            print(f"  timestamp                     : {now_str}")
-            print(f"  triggered_id                  : {triggered_id}")
-            print(f"  patient_id                    : {patient_id}")
-            print(f"  genes                         : {gene1}, {gene2}, {gene3}")
-            print(f"  slider values (input)         : val1={val1}, val2={val2}, val3={val3}")
-            print(f"  first 5 values of baseline vec: {patient_row[gene_cols_global].iloc[0].values[:5].tolist()}")
-            print(f"  modified indices              : idx1={idx1}, idx2={idx2}, idx3={idx3}")
-            print(f"  values written to copy vec    : val1={resolved_val1:.4f}, val2={resolved_val2:.4f}, val3={resolved_val3:.4f}")
-            print(f"  computed centroid distances   : {[float(d) for d in distances]}")
-            print(f"  computed probabilities        : {[float(p) for p in probabilities]}")
-            print(f"  Softmax temperature T         : {SIMULATOR_TEMPERATURE}")
-            print("==================================\n")
-            
             # Find highest probability index
             max_idx = int(np.argmax(probabilities))
             prediction_confidence = float(probabilities[max_idx] * 100)
@@ -1572,25 +1568,6 @@ def register_callbacks(
             opacities = [1.0 if i == max_idx else 0.55 for i in range(5)]
             bar_colors = [color_map.get(s, "#cbd5e1") for s in subtype_names_list]
             
-            # Reverse all lists for horizontal plotting direction so that Normal is at the top
-            y_labels_reversed = y_labels[::-1]
-            prob_percentages_reversed = [float(p) for p in prob_percentages[::-1]]
-            opacities_reversed = opacities[::-1]
-            bar_colors_reversed = bar_colors[::-1]
-            
-            # Diagnostic prints as requested by user
-            print("\n=== SIMULATOR DIAGNOSTIC REPORT ===")
-            print(f"Selected Patient: {patient_id}")
-            print(f"Selected Genes: {gene1}, {gene2}, {gene3}")
-            print(f"Perturbed Expression Values: {resolved_val1:.4f}, {resolved_val2:.4f}, {resolved_val3:.4f}")
-            print(f"Raw Euclidean Distances: {[float(d) for d in distances]}")
-            print(f"Shifted Scores for Softmax: {[float(s) for s in scores]}")
-            print(f"Final Probabilities: {[float(p) for p in probabilities]}")
-            print(f"Probabilities Sum: {float(np.sum(probabilities)):.6f}")
-            print(f"Has NaN: {bool(np.isnan(probabilities).any())}")
-            print(f"Has Inf: {bool(np.isinf(probabilities).any())}")
-            print(f"Lengths check - Subtypes: {len(y_labels_reversed)}, Probs: {len(prob_percentages_reversed)}, Colors: {len(bar_colors_reversed)}, Opacities: {len(opacities_reversed)}")
-            
             # Sort subtypes alphabetically so they match the Contour plot legend ordering:
             # Ependymoma, Glioblastoma, Medulloblastoma, Normal, Pilocytic Astrocytoma
             alphabetical_subtypes = ["ependymoma", "glioblastoma", "medulloblastoma", "normal", "pilocytic_astrocytoma"]
@@ -1621,7 +1598,7 @@ def register_callbacks(
                 x=x_vals,
                 y=y_names,
                 orientation="h",
-                width=0.8,  # Maximized bar thickness (occupies 80% of vertical slot)
+                width=0.85,  # Maximized bar thickness (occupies 85% of vertical slot)
                 marker=dict(
                     color=colors,
                     opacity=opacities_list,
@@ -1638,20 +1615,24 @@ def register_callbacks(
             fig.update_layout(
                 template=PLOT_TEMPLATE,
                 showlegend=False,  # Plotly legend completely removed
+                dragmode=False,    # Disable rubber-band zoom / pan gestures entirely
+                bargap=0.15,       # Tighter gaps so bars fill more of the row height
                 xaxis=dict(
                     showgrid=False,   # Hide grid lines
                     zeroline=False,
                     tickfont=dict(color=PLOT_TICK_COLOR, size=10),
                     range=[0, 100],   # Similarity scale up to 100%
+                    fixedrange=True,  # Lock this chart — no zoom/pan like the other plots
                 ),
                 yaxis=dict(
                     showticklabels=False,  # Hide subtype names from Y-axis
                     showgrid=False,        # Hide grid lines
                     type="category",
+                    fixedrange=True,  # Lock this chart — no zoom/pan like the other plots
                 ),
                 plot_bgcolor=PLOT_PLOT_BG,
                 paper_bgcolor=PLOT_PAPER_BG,
-                margin=dict(l=10, r=20, t=8, b=20)  # Restrict margins to completely fill container
+                margin=dict(l=10, r=45, t=8, b=20)  # Wider right margin so outside labels (e.g. "72.8%") never clip
             )
             
             # 3. Predicted class card (redesigned for compact light theme)
@@ -1697,11 +1678,8 @@ def register_callbacks(
             
 
             outputs = (fig, prediction_card, distance_card, labels[0], labels[1], labels[2])
-            print(f"  Outputs (Lengths prediction_card={len(prediction_card)}, distance_card={len(distance_card)}): Successfully returned.")
             return outputs
-        except Exception as e:
+        except Exception:
             import traceback
-            print("\n==================== EXCEPTION ====================")
             traceback.print_exc()
-            print("===================================================\n")
             raise

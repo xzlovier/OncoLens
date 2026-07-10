@@ -49,7 +49,7 @@ def ExpressionCard(
                 children=dcc.Graph(
                     id="profiles-plot",
                     config={"displayModeBar": True, "responsive": True},
-                    style={"height": "430px", "width": "100%"},
+                    style={"height": "290px", "width": "100%"},
                 )
             )
         ]

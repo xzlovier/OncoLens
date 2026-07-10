@@ -416,6 +416,16 @@ body {
     flex-shrink: 0;
 }
 
+.plot-section-title{
+    font-size:0.9rem;
+    font-weight:500;
+    color:#1F2937;
+
+    margin:0 0 4px 0.9rem;   /* SAME as card header */
+    line-height:1.2;
+}
+
+
 .mini-stat-card {
     flex: 1;
     background: #F9FAFB;
@@ -647,24 +657,24 @@ body {
     display: flex;
     flex-direction: column;
     gap: 0px;                        /* ← spacing between genes   */
-    padding: 8px 10px;
+    padding: 6px 10px;
     border-right: 1px solid #E5E7EB;
-    overflow-y: auto;
+    overflow: hidden;
 }
 
 .sim2-patient-row {
     display: flex;
     align-items: flex-end;
     gap: 6px;
-    padding-bottom: 6px;
-    margin-bottom: 2px;
+    padding-bottom: 4px;
+    margin-bottom: 1px;
     border-bottom: 1px solid #F3F4F6;
 }
 
 .sim2-gene-block {
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: 1px;
 }
 
 .sim2-slider-label {
@@ -673,20 +683,51 @@ body {
     font-size: 10px;
     font-weight: 600;
     color: #4B5563;
-    min-height: 13px;
-    margin-top: 2px;
+    min-height: 12px;
+    margin-top: 1px;
 }
 
 /* ── RIGHT: Results Panel ────────────────────────────────────── */
+/* Styled to match the native Plotly legend used on the Contour card:
+   a bordered "chip" box, wraps onto a 2nd row instead of squeezing
+   or breaking words mid-label. */
 .sim2-html-legend {
     display: flex;
     flex-direction: row;
-    justify-content: center;
+    flex-wrap: wrap;                 /* wraps into multiple rows */
+    justify-content: flex-end;       /* right-aligned above the chart */
     align-items: center;
-    flex-wrap: nowrap;
-    padding: 6px 0 2px 0;
-    background: #FFFFFF;
+    gap: 3px 12px;                   /* compact vertical + horizontal gap */
+    row-gap: 3px;
+    width: 100%;                     /* fills the right column width */
+    max-width: 100%;
+    margin: 2px 0 2px 0;
+    padding: 3px 4px;
+    background: transparent;         /* no background */
+    border: none;                    /* no border */
     flex-shrink: 0;
+}
+
+.sim2-legend-item {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    white-space: nowrap;
+}
+
+.sim2-legend-dot {
+    display: inline-block;
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;   /* circle, matching Plotly's scatter markers */
+    flex-shrink: 0;
+}
+
+.sim2-legend-label {
+    font-size: 10px;
+    font-weight: 600;
+    color: #4B5563;
+    white-space: nowrap;
 }
 
 .sim2-right{
@@ -704,14 +745,17 @@ body {
     width: 100%;
     overflow: hidden;
 }
-/* Ensure dcc.Loading wrappers propagate height to the Plotly graph */
-.sim2-chart > div,
-.sim2-chart > div > div,
-.sim2-chart > div > div > div {
+.sim2-chart > div:first-child,
+.sim2-chart > div:first-child > div:first-child,
+.sim2-chart > div:first-child > div:first-child > div:first-child {
     flex: 1 1 0;
     min-height: 0;
     display: flex;
     flex-direction: column;
+}
+
+.sim2-chart div:empty {
+    display: none !important;
 }
 
 .sim2-results{
