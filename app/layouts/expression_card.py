@@ -13,19 +13,14 @@ def ExpressionCard(
     """
     Returns the viz card for the Gene Expression Profile Explorer.
 
-    Includes the profiles violin/box plot and the statistics details panel with the gene selector at the top.
+    Gene selector dropdown is placed on the right side of the card header.
     """
     dd_style = {"color": "#1F2937", "fontSize": "0.85rem"}
     
-    # Expression Gene selector control styled for the details sidebar
-    gene_ctrl = html.Div(
-        style={
-            "marginBottom": "0.75rem",
-            "paddingBottom": "0.5rem",
-            "borderBottom": "1px solid #E5E7EB"
-        },
+    # Dropdown to be placed on the right side of the card header
+    gene_dropdown = html.Div(
+        style={"width": "180px", "marginTop": "2px"},
         children=[
-            html.Label("Expression Gene", className="ctrl-label"),
             dcc.Dropdown(
                 id="profiles-gene-selector",
                 options=gene_options,
@@ -38,8 +33,15 @@ def ExpressionCard(
         ]
     )
 
-    plot_col = html.Div(
-        style={"flex": "1", "minWidth": "0"},
+    # Plot area stretching to full width and height
+    plot_area = html.Div(
+        style={
+            "flex": "1",
+            "display": "flex",
+            "flexDirection": "column",
+            "minWidth": "0",
+            "minHeight": "0"
+        },
         children=[
             dcc.Loading(
                 type="circle",
@@ -47,37 +49,23 @@ def ExpressionCard(
                 children=dcc.Graph(
                     id="profiles-plot",
                     config={"displayModeBar": True, "responsive": True},
-                    style={"height": "100%", "minHeight": "240px"},
+                    style={"height": "430px", "width": "100%"},
                 )
             )
         ]
     )
 
-    details_col = html.Div(
-        className="side-details-panel",
-        style={
-            "width": "220px",
-            "flexShrink": "0",
-            "display": "flex",
-            "flexDirection": "column",
-            "marginLeft": "0.5rem"
-        },
-        children=[
-            gene_ctrl,
-            html.Div(
-                id="profiles-details-card",
-                children=[],
-                style={"flex": "1", "overflowY": "auto"}
-            )
-        ]
+    # Footer element for highlighted statistics details (updated via callback)
+    footer_details = html.Div(
+        id="profiles-details-card",
+        className="profiles-footer-content"
     )
 
     return viz_card(
         card_id="card-expression",
         title="Gene Expression Profiles",
         subtitle="How does a gene's expression vary across the five clinical cohorts?",
-        children=html.Div(
-            style={"display": "flex", "gap": "1rem", "flex": "1", "minHeight": "0"},
-            children=[plot_col, details_col]
-        ),
+        children=plot_area,
+        footer=footer_details,
+        header_right=gene_dropdown
     )

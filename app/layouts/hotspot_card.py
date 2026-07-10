@@ -49,7 +49,7 @@ def HotspotCard(
                 children=dcc.Graph(
                     id="hotspots-plot",
                     config={"displayModeBar": True, "responsive": True},
-                    style={"height": "100%", "minHeight": "240px"},
+                    style={"height": "290px", "width": "100%"},
                 )
             )
         ]

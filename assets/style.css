@@ -298,14 +298,12 @@ body {
 
     min-height:0;
 
-    padding:0.3rem 0.45rem;
+    padding: 0.15rem 0.45rem;
 
     overflow:hidden;
 }
 
-/* Panels with a side-details column need row direction */
-#card-expression .viz-card-body,
-#card-hotspot   .viz-card-body {
+#card-expression .viz-card-body {
     flex-direction: row;
 }
 
@@ -316,7 +314,7 @@ body {
 }
 
 .viz-card-footer {
-    padding: 0.35rem 0.9rem;
+    padding: 0.15rem 0.9rem;
     border-top: 1px solid #F3F4F6;
     flex-shrink: 0;
 }
@@ -603,6 +601,24 @@ body {
 }
 
 .hotspots-footer-container {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+    font-size: 0.74rem;               /* ← footer font size        */
+    color: #4B5563;
+    line-height: 1.2;
+}
+
+/* ── Gene Profiles Footer ───────────────────────────────────── */
+.profiles-footer-content {
+    width: 100%;
+    min-height: 24px;                 /* ← footer height          */
+    display: flex;
+    align-items: center;
+}
+
+.profiles-footer-container {
     display: flex;
     justify-content: space-between;
     align-items: center;

@@ -659,6 +659,7 @@ def register_callbacks(
             x=df_plot["Genomic Start"],
             y=df_plot["ChrTrack"],
             mode="markers",
+            name="Hotspot Loci",  # Set proper human-readable name in legend
             marker=dict(
                 size=marker_sizes,
                 color=df_plot["Rank"],
@@ -711,12 +712,13 @@ def register_callbacks(
                     x=[row_sel["Genomic Start"]],
                     y=[row_sel["ChrTrack"]],
                     mode="markers",
+                    name="Selected Locus",
                     marker=dict(
                         size=selected_marker_size,          # Selected marker size
                         color="rgba(0,0,0,0)",              # Transparent fill
                         line=dict(width=selected_marker_outline_width, color="#10B981") # Outline width and color
                     ),
-                    showlegend=False,
+                    showlegend=True,  # Show highlighted gene item in legend too
                     hoverinfo="skip"
                 ))
         
@@ -745,9 +747,21 @@ def register_callbacks(
             ),
             plot_bgcolor=PLOT_PLOT_BG,
             paper_bgcolor=PLOT_PAPER_BG,
-            margin=dict(l=45, r=20, t=15, b=25), # Tight margins to completely use the canvas
+            margin=dict(l=45, r=20, t=25, b=38), # Bottom margin increased to 38px to prevent x-axis clipping
             hovermode="closest",
-            height=490 # height directly controls track-to-track row spacing
+            height=290, # height directly controls track-to-track row spacing
+            showlegend=True,
+            legend=dict(
+                orientation="v",
+                yanchor="bottom",
+                y=0.02,
+                xanchor="right",
+                x=0.98,
+                font=dict(color=PLOT_TICK_COLOR, size=9),
+                bgcolor="rgba(255, 255, 255, 0.7)",
+                bordercolor="rgba(0, 0, 0, 0.1)",
+                borderwidth=1
+            )
         )
         
         return fig
@@ -1244,8 +1258,8 @@ def register_callbacks(
             
             display_name = subtype.replace("_", " ").title()
             subtype_color = color_map.get(subtype, "#cbd5e1")
-            x_tick_label = f"{display_name}<br>(N={len(df_sub)})"
-            
+            x_tick_label = f"{display_name}<br>N={len(df_sub)}"
+                
             fig.add_trace(go.Violin(
                 x=[x_tick_label] * len(df_sub),
                 y=y_vals,
@@ -1255,10 +1269,11 @@ def register_callbacks(
                 points='all',
                 jitter=0.3,
                 pointpos=-1.8, # Position points to the left of the violin
-                marker=dict(size=5, opacity=0.7, color=subtype_color),
-                line=dict(color=subtype_color, width=1.5),
+                width=0.6,    # Slightly wider violins (maximized visual area)
+                marker=dict(size=6, opacity=0.75, color=subtype_color), # Slightly larger jitter points
+                line=dict(color=subtype_color, width=2.0), # Slightly thicker outline
                 fillcolor=subtype_color,
-                opacity=0.8,
+                opacity=0.75,  # Better transparency so overlap points remain visible
                 customdata=customdata,
                 hovertemplate=(
                     "<b>Sample ID</b>: %{customdata[0]}<br>"
@@ -1285,120 +1300,67 @@ def register_callbacks(
             yref="y"
         )
         
-        # Annotate overall mean line
-        fig.add_annotation(
-            x=len(groups_valid) - 0.55,
-            y=mean_overall,
-            text=f"Overall Mean: {mean_overall:.4f}",
-            showarrow=False,
-            yshift=10,
-            font=dict(color=PLOT_TICK_COLOR, size=10, family="Inter")
-        )
-        
-        title_text = f"Subtype Expression Profile: {symbol} ({probe_id})"
-        
         fig.update_layout(
             template=PLOT_TEMPLATE,
-            title=dict(
-                text=title_text,
-                font=dict(size=16, color=PLOT_TITLE_COLOR, family="Outfit")
-            ),
+            title=None, # Removed Plotly title since card header already has one (reclaims space)
             xaxis=dict(
-                title=dict(text="Clinical Cohort", font=dict(color=PLOT_AXIS_LABEL_COLOR, size=12)),
-                tickfont=dict(color=PLOT_TICK_COLOR),
+                title=None, # Removed redundant x-axis title to maximize visual plotting area
+                tickfont=dict(color=PLOT_TICK_COLOR, size=9), # Smaller, more compact tick labels
                 gridcolor=PLOT_GRID,
                 categoryorder="array",
-                categoryarray=[f"{s.replace('_', ' ').title()}<br>(N={len(df_expr_global[df_expr_global['type'] == s])})" for s in SUBTYPE_ORDER]
+                categoryarray=[
+                    f"Normal<br>N={len(df_expr_global[df_expr_global['type'] == 'normal'])}",
+                    f"Ependymoma<br>N={len(df_expr_global[df_expr_global['type'] == 'ependymoma'])}",
+                    f"Glioblastoma<br>N={len(df_expr_global[df_expr_global['type'] == 'glioblastoma'])}",
+                    f"Medulloblastoma<br>N={len(df_expr_global[df_expr_global['type'] == 'medulloblastoma'])}",
+                    f"Pilocytic Astrocytoma<br>N={len(df_expr_global[df_expr_global['type'] == 'pilocytic_astrocytoma'])}"
+                ]
             ),
             yaxis=dict(
-                title=dict(text="Log2 Normalized Expression Value", font=dict(color=PLOT_AXIS_LABEL_COLOR, size=12)),
-                tickfont=dict(color=PLOT_TICK_COLOR),
+                title=dict(text="Log2 Expression Level", font=dict(color=PLOT_AXIS_LABEL_COLOR, size=11)),
+                tickfont=dict(color=PLOT_TICK_COLOR, size=10),
                 gridcolor=PLOT_GRID,
                 zerolinecolor=PLOT_ZEROLINE,
             ),
             plot_bgcolor=PLOT_PLOT_BG,
             paper_bgcolor=PLOT_PAPER_BG,
-            margin=dict(l=60, r=40, t=70, b=60),
-            hovermode="closest"
+            margin=dict(l=45, r=20, t=15, b=45), # Reduced margins to completely fill card
+            hovermode="closest",
+            height=290 # Matches the card content viewport height
         )
         
-        # 6. Render Statistics and ANOVA details card
+        # 6. Render Statistics and ANOVA details card as horizontal footer layout
         card_content = [
-            html.H3("Gene Statistics", style={"borderBottom": "1px solid #1e293b", "paddingBottom": "0.75rem", "color": "#f8fafc", "marginTop": "0"}),
             html.Div(
-                style={"display": "flex", "flexDirection": "column", "gap": "1.1rem", "marginTop": "1.5rem"},
+                className="profiles-footer-container",
+                style={
+                    "display": "flex",
+                    "justifyContent": "space-between",
+                    "alignItems": "center",
+                    "width": "100%",
+                    "fontSize": "0.75rem",
+                    "color": "#4B5563"
+                },
                 children=[
-                    html.Div([
-                        html.Span("Gene Symbol", style={"fontSize": "0.85rem", "color": "#64748b", "display": "block"}),
-                        html.Strong(symbol, style={"color": "#10b981", "fontSize": "1.6rem", "fontFamily": "Outfit"})
-                    ]),
-                    html.Div([
-                        html.Span("Probe Set ID", style={"fontSize": "0.85rem", "color": "#64748b", "display": "block"}),
-                        html.Strong(probe_id, style={"color": "#f8fafc", "fontSize": "1.1rem"})
-                    ]),
                     html.Div(
-                        style={"display": "grid", "gridTemplateColumns": "1fr 1fr", "gap": "1rem"},
                         children=[
-                            html.Div([
-                                html.Span("Chromosome", style={"fontSize": "0.85rem", "color": "#64748b", "display": "block"}),
-                                html.Strong(f"Chr {chrom}" if pd.notna(chrom) else "Unmapped", style={"color": "#cbd5e1", "fontSize": "1rem"})
-                            ]),
-                            html.Div([
-                                html.Span("Cytoband", style={"fontSize": "0.85rem", "color": "#64748b", "display": "block"}),
-                                html.Strong(cytoband if pd.notna(cytoband) else "Unmapped", style={"color": "#cbd5e1", "fontSize": "1rem"})
-                            ])
+                            html.Span("Selected Gene: ", style={"color": "#6B7280", "fontWeight": "500"}),
+                            html.Strong(symbol, style={"color": "#10B981", "fontSize": "0.85rem", "fontFamily": "Outfit"}),
+                            html.Span("  •  ", style={"color": "#D1D5DB"}),
+                            html.Span("Probe ID: ", style={"color": "#6B7280"}),
+                            html.Strong(probe_id, style={"color": "#374151"}),
                         ]
                     ),
                     html.Div(
-                        style={"display": "grid", "gridTemplateColumns": "1fr 1fr", "gap": "1rem"},
                         children=[
-                            html.Div([
-                                html.Span("Variance Rank", style={"fontSize": "0.85rem", "color": "#64748b", "display": "block"}),
-                                html.Strong(f"#{int(rank)}" if pd.notna(rank) else "N/A", style={"color": "#f59e0b", "fontSize": "1rem"})
-                            ]),
-                            html.Div([
-                                html.Span("ANOVA p-value", style={"fontSize": "0.85rem", "color": "#64748b", "display": "block"}),
-                                html.Strong(p_value_str, style={"color": "#10b981" if p_value_str.startswith("<") or (not p_value_str.startswith("Error") and float(p_value_str.split('e')[0]) < 0.05) else "#cbd5e1", "fontSize": "1rem"})
-                            ])
-                        ]
-                    ),
-                    html.Div(
-                        style={"display": "grid", "gridTemplateColumns": "1fr 1fr", "gap": "1rem"},
-                        children=[
-                            html.Div([
-                                html.Span("Mean Expression", style={"fontSize": "0.85rem", "color": "#64748b", "display": "block"}),
-                                html.Strong(f"{mean_overall:.4f}", style={"color": "#cbd5e1", "fontSize": "1rem"})
-                            ]),
-                            html.Div([
-                                html.Span("Median Expression", style={"fontSize": "0.85rem", "color": "#64748b", "display": "block"}),
-                                html.Strong(f"{median_overall:.4f}", style={"color": "#cbd5e1", "fontSize": "1rem"})
-                            ])
-                        ]
-                    ),
-                    html.Div(
-                        style={"display": "grid", "gridTemplateColumns": "1fr 1fr", "gap": "1rem"},
-                        children=[
-                            html.Div([
-                                html.Span("Std Deviation", style={"fontSize": "0.85rem", "color": "#64748b", "display": "block"}),
-                                html.Strong(f"{std_overall:.4f}", style={"color": "#cbd5e1", "fontSize": "1rem"})
-                            ]),
-                            html.Div([
-                                html.Span("Min Expression", style={"fontSize": "0.85rem", "color": "#64748b", "display": "block"}),
-                                html.Strong(f"{min_overall:.4f}", style={"color": "#cbd5e1", "fontSize": "1rem"})
-                            ])
-                        ]
-                    ),
-                    html.Div(
-                        style={"display": "grid", "gridTemplateColumns": "1fr 1fr", "gap": "1rem"},
-                        children=[
-                            html.Div([
-                                html.Span("Max Expression", style={"fontSize": "0.85rem", "color": "#64748b", "display": "block"}),
-                                html.Strong(f"{max_overall:.4f}", style={"color": "#cbd5e1", "fontSize": "1rem"})
-                            ]),
-                            html.Div([
-                                html.Span("Sample Count", style={"fontSize": "0.85rem", "color": "#64748b", "display": "block"}),
-                                html.Strong(f"{n_samples}", style={"color": "#cbd5e1", "fontSize": "1rem"})
-                            ])
+                            html.Span("Mean Expression: ", style={"color": "#6B7280"}),
+                            html.Strong(f"{mean_overall:.2f}", style={"color": "#374151"}),
+                            html.Span("  •  ", style={"color": "#D1D5DB"}),
+                            html.Span("Variance: ", style={"color": "#6B7280"}),
+                            html.Strong(f"{variance:.4f}" if pd.notna(variance) else "—", style={"color": "#374151"}),
+                            html.Span("  •  ", style={"color": "#D1D5DB"}),
+                            html.Span("ANOVA p-value: ", style={"color": "#6B7280"}),
+                            html.Strong(p_value_str, style={"color": "#10B981" if p_value_str.startswith("<") or (not p_value_str.startswith("Error") and p_value_str != "N/A" and float(p_value_str.split('e')[0]) < 0.05) else "#374151"}),
                         ]
                     )
                 ]
