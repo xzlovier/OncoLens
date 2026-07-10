@@ -123,7 +123,7 @@ def ContourCard(
                         "responsive": True,
                     },
                     style={
-                        "height": "340px",      # try 340–350
+                        "height": "330px",      # try 340–350
                         "width": "100%",
                         "display": "block",
                     },
@@ -131,7 +131,7 @@ def ContourCard(
             )
         ],
         style={
-            "margin-top": "2px",
+            "margin-top": "0px",
         },
     )
 
