@@ -108,6 +108,13 @@ def ContourCard(
 
 
     plot_area = html.Div(
+        style={
+            "display": "flex",
+            "flexDirection": "column",
+            "flex": "1 1 0",
+            "minHeight": "0",
+            "marginTop": "0px",
+        },
         children=[
             html.Div(
                 id="contour-plot-title",
@@ -116,23 +123,28 @@ def ContourCard(
             dcc.Loading(
                 type="circle",
                 color="#2563EB",
+                parent_style={
+                    "height": "100%",
+                    "flex": "1 1 0",
+                    "display": "flex",
+                    "flexDirection": "column",
+                },
                 children=dcc.Graph(
                     id="contour-plot",
+                    className="dash-graph",
                     config={
                         "displayModeBar": True,
                         "responsive": True,
                     },
                     style={
-                        "height": "330px",      # try 340–350
+                        "height": "100%",
                         "width": "100%",
-                        "display": "block",
+                        "flex": "1 1 0",
+                        "minHeight": "0",
                     },
                 ),
             )
         ],
-        style={
-            "margin-top": "0px",
-        },
     )
 
     return viz_card(
@@ -158,7 +170,9 @@ def ContourCard(
                 # ---------------------------------------------------------
                 html.Div(
                     style={
-                        "flex": "1",
+                        "display": "flex",
+                        "flexDirection": "column",
+                        "flex": "1 1 0",
                         "minHeight": "0",
                         "marginTop": "0",
                     },
