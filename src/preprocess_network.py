@@ -47,76 +47,95 @@ def main():
     df_rank["Rank"] = df_rank.index + 1
     df_annot_merged = df_annot.merge(df_rank, on="ProbeID", how="left")
     
-    # 3. Compute Pearson correlation matrix
-    print(" -> Computing pairwise Pearson correlations...")
-    # Drop sample metadata columns to isolate gene expression values
-    df_genes = df_expr.drop(columns=["samples", "type"])
-    corr_matrix = df_genes.corr(method="pearson")
-    
-    # 4. Extract upper triangle index coordinates meeting threshold (correlation >= 0.70)
-    # 0.70 is chosen to support all options (0.70, 0.75, 0.80, 0.85, 0.90) in the dashboard controls
+    # Get all unique subtypes + "All" for cohort comparisons
+    subtypes = ["All"] + sorted(df_expr["type"].unique().tolist())
     threshold = 0.70
-    print(f" -> Extracting upper-triangle co-expression edges (correlation >= {threshold})...")
     
-    upper_tri_mask = np.triu(np.ones(corr_matrix.shape), k=1).astype(bool)
-    edges_mask = (corr_matrix.values >= threshold) & upper_tri_mask
-    row_idx, col_idx = np.where(edges_mask)
+    all_edges = []
     
-    probe_x = corr_matrix.index[row_idx]
-    probe_y = corr_matrix.columns[col_idx]
-    correlations = corr_matrix.values[row_idx, col_idx]
-    
-    # 5. Build raw edges dataframe
-    df_edges = pd.DataFrame({
-        "Probe X": probe_x,
-        "Probe Y": probe_y,
-        "Correlation": correlations
-    })
-    
-    # 6. Map annotations for Gene X
-    print(" -> Mapping genomic annotations and co-expression metadata...")
-    df_edges = df_edges.merge(
-        df_annot_merged[["ProbeID", "Gene Symbol", "Rank", "Chromosome"]],
-        left_on="Probe X",
-        right_on="ProbeID",
-        how="left"
-    ).rename(columns={
-        "Gene Symbol": "Gene X",
-        "Rank": "Variance Rank X",
-        "Chromosome": "Chromosome X"
-    }).drop(columns=["ProbeID"])
-    
-    # 7. Map annotations for Gene Y
-    df_edges = df_edges.merge(
-        df_annot_merged[["ProbeID", "Gene Symbol", "Rank", "Chromosome"]],
-        left_on="Probe Y",
-        right_on="ProbeID",
-        how="left"
-    ).rename(columns={
-        "Gene Symbol": "Gene Y",
-        "Rank": "Variance Rank Y",
-        "Chromosome": "Chromosome Y"
-    }).drop(columns=["ProbeID"])
-    
-    # 8. Reorder and clean columns
-    df_edges = df_edges[[
-        "Gene X", "Probe X",
-        "Gene Y", "Probe Y",
-        "Correlation",
-        "Variance Rank X", "Variance Rank Y",
-        "Chromosome X", "Chromosome Y"
-    ]]
+    for subtype in subtypes:
+        print(f" -> Processing cohort: {subtype}...")
+        if subtype == "All":
+            df_sub = df_expr
+        else:
+            df_sub = df_expr[df_expr["type"] == subtype]
+            
+        # 3. Compute Pearson correlation matrix
+        # Exclude Affymetrix control probes (AFFX-*) — these are spike-in RNA controls,
+        # not real human genes, and create biologically meaningless correlations
+        df_genes = df_sub.drop(columns=["samples", "type"])
+        df_genes = df_genes[[c for c in df_genes.columns if not c.startswith("AFFX-")]]
+        corr_matrix = df_genes.corr(method="pearson")
+        
+        # 4. Extract upper triangle index coordinates meeting threshold (correlation >= 0.70)
+        upper_tri_mask = np.triu(np.ones(corr_matrix.shape), k=1).astype(bool)
+        edges_mask = (corr_matrix.values >= threshold) & upper_tri_mask
+        row_idx, col_idx = np.where(edges_mask)
+        
+        probe_x = corr_matrix.index[row_idx]
+        probe_y = corr_matrix.columns[col_idx]
+        correlations = corr_matrix.values[row_idx, col_idx]
+        
+        # 5. Build raw edges dataframe
+        df_edges = pd.DataFrame({
+            "Probe X": probe_x,
+            "Probe Y": probe_y,
+            "Correlation": correlations
+        })
+        
+        # 6. Map annotations for Gene X
+        df_edges = df_edges.merge(
+            df_annot_merged[["ProbeID", "Gene Symbol", "Rank", "Chromosome"]],
+            left_on="Probe X",
+            right_on="ProbeID",
+            how="left"
+        ).rename(columns={
+            "Gene Symbol": "Gene X",
+            "Rank": "Variance Rank X",
+            "Chromosome": "Chromosome X"
+        }).drop(columns=["ProbeID"])
+        
+        # 7. Map annotations for Gene Y
+        df_edges = df_edges.merge(
+            df_annot_merged[["ProbeID", "Gene Symbol", "Rank", "Chromosome"]],
+            left_on="Probe Y",
+            right_on="ProbeID",
+            how="left"
+        ).rename(columns={
+            "Gene Symbol": "Gene Y",
+            "Rank": "Variance Rank Y",
+            "Chromosome": "Chromosome Y"
+        }).drop(columns=["ProbeID"])
+        
+        # Add Subtype column
+        df_edges["Subtype"] = subtype
+        
+        # 8. Reorder and clean columns
+        df_edges = df_edges[[
+            "Subtype",
+            "Gene X", "Probe X",
+            "Gene Y", "Probe Y",
+            "Correlation",
+            "Variance Rank X", "Variance Rank Y",
+            "Chromosome X", "Chromosome Y"
+        ]]
+        
+        all_edges.append(df_edges)
+        print(f"    - Extracted {len(df_edges)} co-expression edges.")
+        
+    # Concatenate all cohorts
+    df_final_edges = pd.concat(all_edges, ignore_index=True)
     
     # 9. Save edge list to CSV
-    print(f" -> Saving co-expression edge list ({len(df_edges)} edges) to: {path_output.name}...")
-    df_edges.to_csv(path_output, index=False)
+    print(f" -> Saving complete co-expression edge list ({len(df_final_edges)} edges) to: {path_output.name}...")
+    df_final_edges.to_csv(path_output, index=False)
     
     runtime = time.time() - start_time
     print("-" * 80)
     print("Preprocessing Completed Successfully!")
-    print(f"Total Edges Extracted : {len(df_edges)}")
-    print(f"Correlation Bound     : >= {threshold}")
-    print(f"Total Runtime         : {runtime:.2f} seconds")
+    print(f"Total Edges Extracted Across Cohorts : {len(df_final_edges)}")
+    print(f"Correlation Bound                    : >= {threshold}")
+    print(f"Total Runtime                        : {runtime:.2f} seconds")
     print("=" * 80)
 
 if __name__ == "__main__":

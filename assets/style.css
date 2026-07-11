@@ -21,7 +21,7 @@ body {
     margin: 0;
     padding: 0;
     overflow: hidden;
-    background: #F5F7FA;
+    background: #EBF3FC;
     color: #1F2937;
     font-family: 'Inter', 'Outfit', -apple-system, BlinkMacSystemFont,
                  'Segoe UI', sans-serif;
@@ -49,7 +49,7 @@ body {
     flex-direction: column;
     height: 100%;          /* fills the Dash wrapper chain above */
     overflow: hidden;
-    background: #F5F7FA;
+    background: #EBF3FC;
 }
 
 /* ================================================================
@@ -80,7 +80,7 @@ body {
     font-size: 1.35rem;
     font-weight: 800;
     color: #2563EB;
-    letter-spacing: -0.04em;
+    letter-spacing: -0.04em;]
 }
 
 .brand-lens {
@@ -906,3 +906,259 @@ body {
     padding: 2px 7px !important;
     border-radius: 5px !important;
 }
+
+/* ================================================================
+   THEME TOGGLE BUTTON
+   ================================================================ */
+.theme-toggle-btn {
+    margin-left: 1.25rem;
+    padding: 3px 12px;
+    font-size: 0.76rem;
+    font-weight: 600;
+    border-radius: 20px;
+    border: 1px solid #E5E7EB;
+    background: #F3F4F6;
+    color: #374151;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.theme-toggle-btn:hover {
+    background: #E5E7EB;
+    border-color: #D1D5DB;
+    color: #111827;
+}
+
+/* ================================================================
+   DARK MODE SYSTEM STYLES
+   ================================================================ */
+.dark-mode {
+    background-color: #0B0F19 !important;
+    color: #F3F4F6 !important;
+}
+
+.dark-mode #dash-header {
+    background: #111827;
+    border-bottom: 1px solid #1F2937;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+}
+
+.dark-mode .brand-subtitle {
+    color: #6B7280;
+}
+
+.dark-mode .header-pill {
+    background: #1F2937;
+    border-color: #374151;
+}
+
+.dark-mode .pill-label {
+    color: #9CA3AF;
+}
+
+.dark-mode .theme-toggle-btn {
+    background: #1F2937;
+    border-color: #374151;
+    color: #E5E7EB;
+}
+
+.dark-mode .theme-toggle-btn:hover {
+    background: #374151;
+    border-color: #4B5563;
+    color: #FFFFFF;
+}
+
+/* Cards & Containers */
+.dark-mode .viz-card {
+    background: #111827;
+    border-color: #1F2937;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
+}
+
+.dark-mode .viz-card:hover {
+    box-shadow: 0 4px 20px rgba(37, 99, 235, 0.15);
+}
+
+.dark-mode .viz-card-header {
+    border-bottom: 1px solid #1F2937;
+}
+
+.dark-mode .viz-card-title {
+    color: #F9FAFB;
+}
+
+.dark-mode .viz-card-subtitle {
+    color: #6B7280;
+}
+
+.dark-mode .viz-card-footer {
+    border-top: 1px solid #1F2937;
+}
+
+/* Dropdowns in Dark Mode */
+.dark-mode .Select-control {
+    background: #111827 !important;
+    border-color: #1F2937 !important;
+}
+
+.dark-mode .Select-control:hover {
+    border-color: #3b82f6 !important;
+}
+
+.dark-mode .Select-value-label,
+.dark-mode .Select-placeholder {
+    color: #F3F4F6 !important;
+}
+
+.dark-mode .Select-input > input {
+    color: #F3F4F6 !important;
+}
+
+.dark-mode .Select-menu-outer {
+    background: #111827 !important;
+    border-color: #1F2937 !important;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5) !important;
+}
+
+.dark-mode .Select-option {
+    background: #111827 !important;
+    color: #D1D5DB !important;
+}
+
+.dark-mode .Select-option.is-focused {
+    background: #1F2937 !important;
+    color: #FFFFFF !important;
+}
+
+.dark-mode .Select-option.is-selected {
+    background: #2563EB !important;
+    color: #FFFFFF !important;
+}
+
+/* Toolbars & Labels */
+.dark-mode .ctrl-label {
+    color: #9CA3AF;
+}
+
+.dark-mode .form-check-label {
+    color: #D1D5DB;
+}
+
+.dark-mode .contour-toolbar {
+    border-bottom: 1px solid #1F2937;
+}
+
+/* Network Footer */
+.dark-mode #card-network .viz-card-footer {
+    background: #111827;
+    border-top: 1px solid #1F2937;
+}
+
+.dark-mode .network-footer-label {
+    color: #9CA3AF;
+}
+
+.dark-mode .network-footer-value {
+    color: #F9FAFB;
+}
+
+.dark-mode .network-footer-divider {
+    background: #1F2937;
+}
+
+/* Hotspots Plot Details */
+.dark-mode .hotspots-footer-content {
+    color: #D1D5DB;
+}
+
+/* Sliders in Dark Mode */
+.dark-mode .rc-slider-rail {
+    background-color: #1F2937;
+}
+
+.dark-mode .rc-slider-handle {
+    background: #111827 !important;
+    border-color: #3b82f6 !important;
+}
+
+.dark-mode .rc-slider-handle:hover,
+.dark-mode .rc-slider-handle:active {
+    border-color: #60a5fa !important;
+}
+
+/* Virtual Expression Assayer overrides */
+.dark-mode .sim2-body {
+    background: #111827;
+}
+
+.dark-mode .sim2-left {
+    border-right: 1px solid #1F2937 !important;
+}
+
+.dark-mode .sim2-patient-row {
+    border-bottom: 1px solid #1F2937 !important;
+}
+
+.dark-mode .sim2-results {
+    border-top: 1px solid #1F2937 !important;
+}
+
+.dark-mode .sim2-result-panel {
+    background: #1F2937 !important;
+    border: 1px solid #374151 !important;
+    color: #F3F4F6 !important;
+}
+
+.dark-mode .sim2-result-title {
+    color: #9CA3AF !important;
+}
+
+.dark-mode .border-bottom-theme {
+    border-bottom: 1px solid #374151 !important;
+}
+
+.dark-mode .sim2-result-label {
+    color: #9CA3AF !important;
+}
+
+.dark-mode .sim2-result-value {
+    color: #F9FAFB !important;
+}
+
+.dark-mode .sim2-dist-name {
+    color: #D1D5DB !important;
+}
+
+.dark-mode .sim2-dist-val {
+    color: #9CA3AF !important;
+}
+
+.dark-mode .sim2-dist-val-highlighted {
+    color: #10B981 !important;
+}
+
+.dark-mode .sim2-disclaimer {
+    color: #64748B !important;
+}
+
+.dark-mode .sim2-legend-label {
+    color: #9CA3AF !important;
+}
+
+.dark-mode .sim2-slider-label {
+    color: #9CA3AF !important;
+}
+
+/* Global Page Footer */
+.dark-mode #dash-footer {
+    background: #111827;
+    border-top: 1px solid #1F2937;
+}
+
+.dark-mode .footer-text {
+    color: #4B5563;
+}
+

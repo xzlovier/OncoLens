@@ -26,12 +26,29 @@ def NetworkCard(
             html.Div(
                 className="toolbar-left",
                 children=[
-                    html.Div(className="toolbar-control", children=[
+                    html.Div(className="toolbar-control", style={"width": "160px"}, children=[
                         html.Label("Network Threshold", className="ctrl-label"),
                         dcc.Dropdown(
                             id="network-threshold-selector",
                             options=network_threshold_options,
                             value=default_threshold,
+                            clearable=False,
+                            style=dd_style,
+                        )
+                    ]),
+                    html.Div(className="toolbar-control", style={"width": "200px"}, children=[
+                        html.Label("Pathology Cohort", className="ctrl-label"),
+                        dcc.Dropdown(
+                            id="network-subtype-selector",
+                            options=[
+                                {"label": "All Subtypes", "value": "All"},
+                                {"label": "Normal Baseline", "value": "normal"},
+                                {"label": "Ependymoma", "value": "ependymoma"},
+                                {"label": "Glioblastoma", "value": "glioblastoma"},
+                                {"label": "Medulloblastoma", "value": "medulloblastoma"},
+                                {"label": "Pilocytic Astrocytoma", "value": "pilocytic_astrocytoma"},
+                            ],
+                            value="All",
                             clearable=False,
                             style=dd_style,
                         )

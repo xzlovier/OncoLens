@@ -72,6 +72,7 @@ def create_layout(
             # ============================================================
             dcc.Store(id="selected-gene"),
             dcc.Store(id="selected-patient"),
+            dcc.Store(id="theme-store", data="light", storage_type="local"),
 
             # ============================================================
             # Dashboard Header

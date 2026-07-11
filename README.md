@@ -96,7 +96,16 @@ The dashboard will be available at `http://localhost:8050`.
 | Panel | Description |
 |---|---|
 | **Joint Gene Phenotyping** | 2D contour/scatter plot for any selected gene pair with Silhouette score |
-| **Chromosomal Hotspots** | Genome-wide locus mapping of top-variance probes |
-| **Co-Expression Network** | Interactive Pearson correlation graph with click-to-highlight neighbors |
+| **Chromosomal Hotspots** | Genome-wide locus mapping of top-variance probes with interactive click-to-zoom chromosome focus |
+| **Co-Expression Network** | Interactive Pearson correlation graph with pathology cohort specific selectors (All vs Subtypes) and click-to-highlight neighbors |
 | **Expression Profiles** | Per-gene violin/box plot across all five clinical subtypes with ANOVA |
 | **Virtual Expression Assayer** | Softmax centroid classifier simulating expression perturbations in real time |
+
+## Key Extensions & Advanced Features
+
+In addition to the standard pipeline, the platform has been enhanced with:
+1. **Interactive Light/Dark Mode Toggle**: A header control that swaps all Plotly layouts and container stylesheets dynamically, with choice persistence stored locally.
+2. **Pathology-Cohort Networks**: Switch between the global co-expression network ("All") and subtype-specific edge lists to isolate molecular patterns in individual disease profiles.
+3. **Dynamic Chromosome Hotspot Zoom**: Clicking a genomic scatter point on the genome-wide track automatically updates the chromosome selector to focus and center the zoom track on that exact chromosome.
+4. **Enhanced Light Theme Aesthetics**: Replaced the default plain gray background with a premium, subtle sky blue (`#EBF3FC`) dashboard background for improved contrast and visual comfort.
+

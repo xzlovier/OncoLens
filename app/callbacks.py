@@ -15,12 +15,34 @@ from typing import Tuple, Optional
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import silhouette_score
 import networkx as nx
-from dash import Input, Output, html, Dash, callback_context, no_update
-from app.layouts.theme import (
-    PLOT_TEMPLATE,
-    PLOT_PAPER_BG, PLOT_PLOT_BG, PLOT_GRID, PLOT_ZEROLINE,
-    PLOT_TICK_COLOR, PLOT_TITLE_COLOR, PLOT_AXIS_LABEL_COLOR,
-)
+from dash import Input, Output, html, Dash, callback_context, no_update, State
+
+
+def get_theme_colors(theme: str) -> dict:
+    """
+    Returns standard color hexes for either light or dark theme mode
+    to update Plotly figure layouts dynamically.
+    """
+    if theme == "dark":
+        return dict(
+            paper_bg="#111827",  # slate-900 / dark card bg
+            plot_bg="#1E293B",   # slate-800 / inner plot bg
+            grid="#1F2937",      # slate-900 border
+            zeroline="#374151",  # slate-700
+            text="#F9FAFB",      # text gray 50
+            ticks="#9CA3AF",     # text gray 400
+            template="plotly_dark"
+        )
+    else:
+        return dict(
+            paper_bg="#FFFFFF",
+            plot_bg="#FAFBFC",
+            grid="#E5E7EB",
+            zeroline="#D1D5DB",
+            text="#1F2937",
+            ticks="#6B7280",
+            template="plotly_white"
+        )
 
 # ==============================================================================
 # Global Data Storage Placeholders (Populated at Server Startup)
@@ -212,17 +234,22 @@ def register_callbacks(
     # Pre-generate co-expression network spring layout positions once at startup
     print(" -> Constructing co-expression network graph for spring layout calculations...")
     G_base = nx.Graph()
-    connected_probes = set(df_network_edges["Probe X"]).union(set(df_network_edges["Probe Y"]))
+    # Exclude AFFX control probes from layout computation
+    df_net_real = df_network_edges[
+        ~df_network_edges["Probe X"].str.startswith("AFFX-") &
+        ~df_network_edges["Probe Y"].str.startswith("AFFX-")
+    ]
+    connected_probes = set(df_net_real["Probe X"]).union(set(df_net_real["Probe Y"]))
     
     df_nodes = df_annotated[df_annotated["ProbeID"].isin(connected_probes)]
     for _, row in df_nodes.iterrows():
         G_base.add_node(row["ProbeID"])
         
-    for _, row in df_network_edges.iterrows():
+    for _, row in df_net_real.iterrows():
         G_base.add_edge(row["Probe X"], row["Probe Y"])
         
     print(" -> Precomputing network layout coordinates using spring_layout...")
-    network_layout_pos = nx.spring_layout(G_base, seed=42, k=0.12, iterations=50)
+    network_layout_pos = nx.spring_layout(G_base, seed=42, k=0.5, iterations=150)
     
     # Extract Rank 1 dynamically as the initial default pair
     DEFAULT_GENE_X = df_top_pairs.iloc[0]["Probe X"]
@@ -259,10 +286,35 @@ def register_callbacks(
 
 
     # --------------------------------------------------------------------------
-    # NOTE: render_tab_content() has been removed.
-    # The dashboard is now a single unified page — all five visualizations are
-    # statically mounted at startup. No tab routing is required.
+    # 1. Dark/Light Theme Toggle Callbacks
     # --------------------------------------------------------------------------
+    @app.callback(
+        Output("theme-store", "data"),
+        [Input("theme-toggle-btn", "n_clicks")],
+        [State("theme-store", "data")],
+        prevent_initial_call=True
+    )
+    def toggle_theme(n_clicks: Optional[int], current_theme: str) -> str:
+        """
+        Toggles the stored theme name between light and dark when clicking the header button.
+        """
+        if current_theme == "dark":
+            return "light"
+        return "dark"
+
+    @app.callback(
+        [Output("oncolens-dashboard", "className"),
+         Output("theme-toggle-btn", "children")],
+        [Input("theme-store", "data")]
+    )
+    def apply_theme(theme: str) -> Tuple[str, str]:
+        """
+        Applies the corresponding CSS class to the dashboard root and updates the button label.
+        """
+        if theme == "dark":
+            return "oncolens-dashboard dark-mode", "☀️ Light"
+        return "oncolens-dashboard", "🌙 Dark"
+
 
     # --------------------------------------------------------------------------
     # 2. Toggle Visibility of the Demonstration Pair Badge
@@ -357,23 +409,25 @@ def register_callbacks(
          Output("contour-footer", "children")],
         [Input("dropdown-x", "value"),
          Input("dropdown-y", "value"),
-         Input("contour-display-toggle", "value")]
+         Input("contour-display-toggle", "value"),
+         Input("theme-store", "data")]
     )
-    def update_contour_plot(probe_x: str, probe_y: str, display_mode: str) -> Tuple[go.Figure, list]:
+    def update_contour_plot(probe_x: str, probe_y: str, display_mode: str, theme: str) -> Tuple[go.Figure, list, list]:
         """
         Updates the 2D contour-scatter visualization, calculates statistics, and evaluates separation quality.
         """
+        colors = get_theme_colors(theme)
         # A. Handle empty selections
         if not probe_x or not probe_y:
             empty_fig = go.Figure()
             empty_fig.update_layout(
-                template=PLOT_TEMPLATE,
+                template=colors["template"],
                 title=dict(
                     text="Please select both X-axis and Y-axis genes to begin.",
-                    font=dict(size=14, color=PLOT_TICK_COLOR)
+                    font=dict(size=14, color=colors["ticks"])
                 ),
-                plot_bgcolor=PLOT_PLOT_BG,
-                paper_bgcolor=PLOT_PAPER_BG,
+                plot_bgcolor=colors["plot_bg"],
+                paper_bgcolor=colors["paper_bg"],
                 xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
                 yaxis=dict(showgrid=False, zeroline=False, showticklabels=False)
             )
@@ -405,10 +459,10 @@ def register_callbacks(
         if probe_x not in df_expr_global.columns or probe_y not in df_expr_global.columns:
             error_fig = go.Figure()
             error_fig.update_layout(
-                template=PLOT_TEMPLATE,
+                template=colors["template"],
                 title=dict(text="Error: Selected probe not found in expression database.", font=dict(color="#ef4444")),
-                plot_bgcolor=PLOT_PLOT_BG,
-                paper_bgcolor=PLOT_PAPER_BG
+                plot_bgcolor=colors["plot_bg"],
+                paper_bgcolor=colors["paper_bg"]
             )
             return error_fig, make_contour_footer_content(
                 symbol_x="Error loading gene.",
@@ -513,10 +567,10 @@ def register_callbacks(
                 
         # I. Styling configurations
         fig.update_layout(
-            template=PLOT_TEMPLATE,
+            template=colors["template"],
             title=dict(
                 text=None,
-                font=dict(size=13, color=PLOT_TITLE_COLOR, family="Outfit"),
+                font=dict(size=13, color=colors["text"], family="Outfit"),
                 yref="paper",
                 y=0.99,
                 yanchor="top",
@@ -525,26 +579,26 @@ def register_callbacks(
                 pad=dict(t=4),
             ),
             xaxis=dict(
-                title=dict(text=f"{symbol_x} Expression ({probe_x})", font=dict(color=PLOT_AXIS_LABEL_COLOR, size=12)),
-                tickfont=dict(color=PLOT_TICK_COLOR),
-                gridcolor=PLOT_GRID,
-                zerolinecolor=PLOT_ZEROLINE,
+                title=dict(text=f"{symbol_x} Expression ({probe_x})", font=dict(color=colors["ticks"], size=12)),
+                tickfont=dict(color=colors["ticks"]),
+                gridcolor=colors["grid"],
+                zerolinecolor=colors["zeroline"],
             ),
             yaxis=dict(
-                title=dict(text=f"{symbol_y} Expression ({probe_y})", font=dict(color=PLOT_AXIS_LABEL_COLOR, size=12)),
-                tickfont=dict(color=PLOT_TICK_COLOR),
-                gridcolor=PLOT_GRID,
-                zerolinecolor=PLOT_ZEROLINE,
+                title=dict(text=f"{symbol_y} Expression ({probe_y})", font=dict(color=colors["ticks"], size=12)),
+                tickfont=dict(color=colors["ticks"]),
+                gridcolor=colors["grid"],
+                zerolinecolor=colors["zeroline"],
             ),
-            plot_bgcolor=PLOT_PLOT_BG,
-            paper_bgcolor=PLOT_PAPER_BG,
+            plot_bgcolor=colors["plot_bg"],
+            paper_bgcolor=colors["paper_bg"],
             legend=dict(
                 orientation="h",
                 xanchor="center",
                 x=0.5,
                 yanchor="bottom",
                 y=1.0,
-                font=dict(color=PLOT_TITLE_COLOR, size=10),
+                font=dict(color=colors["text"], size=10),
                 bgcolor="rgba(0,0,0,0)",
                 borderwidth=0,
                 tracegroupgap=0,
@@ -565,15 +619,34 @@ def register_callbacks(
             interpretation=interpretation,
         )
 
+    @app.callback(
+        Output("hotspots-chr-selector", "value"),
+        [Input("hotspots-plot", "clickData")],
+        prevent_initial_call=True
+    )
+    def zoom_to_chromosome(click_data: Optional[dict]) -> str:
+        """
+        Dynamically zooms in on a specific chromosome when the user clicks a gene marker
+        while exploring the genome-wide view.
+        """
+        if click_data and "points" in click_data:
+            pt = click_data["points"][0]
+            if "y" in pt:
+                chr_track = str(pt["y"])
+                if chr_track.startswith("Chr"):
+                    return chr_track.replace("Chr", "")
+        return no_update
+
     # --------------------------------------------------------------------------
     # 5. Chromosomal Hotspot Plot Callback
     # --------------------------------------------------------------------------
     @app.callback(
         Output("hotspots-plot", "figure"),
         [Input("hotspots-chr-selector", "value"),
-         Input("hotspots-plot", "clickData")]
+         Input("hotspots-plot", "clickData"),
+         Input("theme-store", "data")]
     )
-    def update_hotspots_plot(selected_chr: str, click_data: Optional[dict]) -> go.Figure:
+    def update_hotspots_plot(selected_chr: str, click_data: Optional[dict], theme: str) -> go.Figure:
         """
         Renders the chromosomal hotspot mapping chart with selection highlighting.
         """
@@ -684,32 +757,35 @@ def register_callbacks(
         
         title_text = "Genome-Wide Expression Variance Hotspots" if selected_chr == "All" else f"Chromosome {selected_chr} Hotspot Loci"
         
+        colors = get_theme_colors(theme)
+        legend_bg = "rgba(17, 24, 39, 0.8)" if theme == "dark" else "rgba(255, 255, 255, 0.7)"
+        legend_border = "rgba(255, 255, 255, 0.1)" if theme == "dark" else "rgba(0, 0, 0, 0.1)"
+        
         fig.update_layout(
-            template=PLOT_TEMPLATE,
+            template=colors["template"],
             title=dict(
                 text=title_text,
-                font=dict(size=14, color=PLOT_TITLE_COLOR, family="Outfit")
+                font=dict(size=14, color=colors["text"], family="Outfit")
             ),
             xaxis=dict(
-                title=dict(text="Genomic Coordinate (Base Pairs)", font=dict(color=PLOT_AXIS_LABEL_COLOR, size=11)),
-                tickfont=dict(color=PLOT_TICK_COLOR, size=10),
-                gridcolor=PLOT_GRID,
-                zerolinecolor=PLOT_ZEROLINE,
+                title=dict(text="Genomic Coordinate (Base Pairs)", font=dict(color=colors["ticks"], size=11)),
+                tickfont=dict(color=colors["ticks"], size=10),
+                gridcolor=colors["grid"],
+                zerolinecolor=colors["zeroline"],
                 tickformat=","
             ),
             yaxis=dict(
-                title=dict(text="Chromosomal Tracks", font=dict(color=PLOT_AXIS_LABEL_COLOR, size=11)),
-                tickfont=dict(color=PLOT_TICK_COLOR, size=10),
-                gridcolor=PLOT_GRID,
+                title=dict(text="Chromosomal Tracks", font=dict(color=colors["ticks"], size=11)),
+                tickfont=dict(color=colors["ticks"], size=10),
+                gridcolor=colors["grid"],
                 type="category",
                 categoryarray=chroms_order,
                 categoryorder="array"
             ),
-            plot_bgcolor=PLOT_PLOT_BG,
-            paper_bgcolor=PLOT_PAPER_BG,
+            plot_bgcolor=colors["plot_bg"],
+            paper_bgcolor=colors["paper_bg"],
             margin=dict(l=45, r=20, t=25, b=38), # Bottom margin increased to 38px to prevent x-axis clipping
             hovermode="closest",
-            height=290, # height directly controls track-to-track row spacing
             showlegend=True,
             legend=dict(
                 orientation="v",
@@ -717,9 +793,9 @@ def register_callbacks(
                 y=0.02,
                 xanchor="right",
                 x=0.98,
-                font=dict(color=PLOT_TICK_COLOR, size=9),
-                bgcolor="rgba(255, 255, 255, 0.7)",
-                bordercolor="rgba(0, 0, 0, 0.1)",
+                font=dict(color=colors["ticks"], size=9),
+                bgcolor=legend_bg,
+                bordercolor=legend_border,
                 borderwidth=1
             )
         )
@@ -823,11 +899,13 @@ def register_callbacks(
         [Output("network-plot", "figure"),
          Output("network-details-card", "children")],
         [Input("network-threshold-selector", "value"),
-         Input("network-plot", "clickData")]
+         Input("network-subtype-selector", "value"),
+         Input("network-plot", "clickData"),
+         Input("theme-store", "data")]
     )
-    def update_network(threshold: float, click_data: Optional[dict]) -> Tuple[go.Figure, list]:
+    def update_network(threshold: float, selected_subtype: str, click_data: Optional[dict], theme: str) -> Tuple[go.Figure, list]:
         """
-        Dynamically filters edges based on selected Pearson threshold,
+        Dynamically filters edges based on selected Pearson threshold and pathology cohort,
         generates the co-expression network graph, and highlights neighbors on click.
         """
         ctx = callback_context
@@ -841,20 +919,24 @@ def register_callbacks(
                 if "customdata" in pt:
                     clicked_probe = pt["customdata"][0]
 
-        # 1. Filter edges at the selected threshold
-        df_edges_filtered = df_network_edges_global[df_network_edges_global["Correlation"] >= threshold]
+        # 1. Filter edges at the selected threshold and subtype
+        df_edges_filtered = df_network_edges_global
+        if "Subtype" in df_edges_filtered.columns:
+            df_edges_filtered = df_edges_filtered[df_edges_filtered["Subtype"] == selected_subtype]
+            
+        df_edges_filtered = df_edges_filtered[df_edges_filtered["Correlation"] >= threshold]
         
-        # Extract set of connected nodes at threshold r >= 0.70 (pre-computed in network_layout_pos)
-        connected_probes = set(df_network_edges_global["Probe X"]).union(set(df_network_edges_global["Probe Y"]))
-        df_nodes = df_annot_global[df_annot_global["ProbeID"].isin(connected_probes)].copy()
+        # Only show nodes that participate in edges at the current threshold and subtype
+        active_probes = set(df_edges_filtered["Probe X"]).union(set(df_edges_filtered["Probe Y"]))
+        df_nodes = df_annot_global[df_annot_global["ProbeID"].isin(active_probes)].copy()
         
         # Node variance scaling bounds
-        var_min = df_nodes["Variance"].min()
-        var_max = df_nodes["Variance"].max()
+        var_min = df_nodes["Variance"].min() if not df_nodes.empty else 0
+        var_max = df_nodes["Variance"].max() if not df_nodes.empty else 1
         var_range = var_max - var_min if var_max > var_min else 1.0
         
         # Calculate degrees (neighbor counts) at the current threshold
-        degrees = {px: 0 for px in connected_probes}
+        degrees = {px: 0 for px in active_probes}
         for _, row in df_edges_filtered.iterrows():
             px = row["Probe X"]
             py = row["Probe Y"]
@@ -875,12 +957,11 @@ def register_callbacks(
         fig = go.Figure()
         
         # 2. Draw co-expression edges grouped into dynamic bins for speed and styling
-        # This approach avoids rendering thousands of individual traces which lags the browser
         step = (1.0 - threshold) / 3.0
         bins = [
-            (threshold, threshold + step, 1.2, 0.15),
-            (threshold + step, threshold + 2*step, 2.5, 0.35),
-            (threshold + 2*step, 1.01, 4.2, 0.65)
+            (threshold, threshold + step, 0.2, 0.08),
+            (threshold + step, threshold + 2*step, 0.6, 0.20),
+            (threshold + 2*step, 1.01, 1.2, 0.40)
         ]
         
         for bin_start, bin_end, width, base_opacity in bins:
@@ -927,7 +1008,7 @@ def register_callbacks(
                 x=high_x,
                 y=high_y,
                 mode="lines",
-                line=dict(width=3.5, color="#3b82f6"),
+                line=dict(width=1.8, color="#3b82f6"),
                 opacity=0.9,
                 hoverinfo="none",
                 showlegend=False
@@ -969,24 +1050,24 @@ def register_callbacks(
             
             # Base node properties
             base_color = chr_colors.get(str(row["Chromosome"]), "#cbd5e1")
-            base_size = 6 + 14 * (row["Variance"] - var_min) / var_range
+            base_size = 4 + 8 * (row["Variance"] - var_min) / var_range
             
             if clicked_probe:
                 if probe_id == clicked_probe:
                     node_colors.append("#ef4444") # Red highlight for selected
-                    node_sizes.append(22)
+                    node_sizes.append(14)
                     node_opacities.append(1.0)
                     node_borders.append("#ffffff")
                     node_border_widths.append(2.0)
                 elif probe_id in neighbors:
                     node_colors.append("#3b82f6") # Blue highlight for neighbors
-                    node_sizes.append(15)
+                    node_sizes.append(9)
                     node_opacities.append(0.95)
                     node_borders.append("#ffffff")
                     node_border_widths.append(1.0)
                 else:
                     node_colors.append("#334155") # Fade unconnected nodes
-                    node_sizes.append(5)
+                    node_sizes.append(3)
                     node_opacities.append(0.12)
                     node_borders.append("#1e293b")
                     node_border_widths.append(0.5)
@@ -1020,15 +1101,16 @@ def register_callbacks(
             showlegend=False
         ))
         
-        title_text = "Co-Expression network (r ≥ {0:.2f})".format(threshold)
+        cohort_label = selected_subtype.replace('_', ' ').title() if selected_subtype != "All" else "All Subtypes"
+        title_text = "Co-Expression network (r ≥ {0:.2f}) — {1}".format(threshold, cohort_label)
         
+        colors = get_theme_colors(theme)
         fig.update_layout(
-            template=PLOT_TEMPLATE,
+            template=colors["template"],
             title=dict(
                 text=title_text,
-                font=dict(size=16, color=PLOT_TITLE_COLOR, family="Outfit")
+                font=dict(size=16, color=colors["text"], family="Outfit")
             ),
-            height=360,
             xaxis=dict(
                 showgrid=False,
                 zeroline=False,
@@ -1040,14 +1122,24 @@ def register_callbacks(
                 showticklabels=False
             ),
             plot_bgcolor="rgba(0,0,0,0)",
-            paper_bgcolor=PLOT_PAPER_BG,
+            paper_bgcolor=colors["paper_bg"],
             margin=dict(l=20, r=20, t=60, b=20),
             hovermode="closest",
             dragmode="pan"
         )
         
         # 6. Render Details Card Sidebar Content
-        target_probe = clicked_probe if clicked_probe else df_rank_global.iloc[0]["ProbeID"]
+        if clicked_probe and clicked_probe in active_probes:
+            target_probe = clicked_probe
+        elif not df_nodes.empty:
+            # Pick the highest-variance active node that is a real gene (not AFFX)
+            df_real = df_nodes[~df_nodes["ProbeID"].str.startswith("AFFX-")]
+            if not df_real.empty:
+                target_probe = df_real.sort_values("Variance", ascending=False).iloc[0]["ProbeID"]
+            else:
+                target_probe = df_nodes.iloc[0]["ProbeID"]
+        else:
+            target_probe = df_rank_global.iloc[0]["ProbeID"]
         ann_row = df_annot_global[df_annot_global["ProbeID"] == target_probe]
         
         if not ann_row.empty:
@@ -1111,8 +1203,8 @@ def register_callbacks(
                                 className="network-footer-line",
                                 style={"justifyContent": "flex-end"},
                                 children=[
-                                    html.Span("Degree: ", className="network-footer-label"),
-                                    html.Span(str(deg), className="network-footer-value"),
+                                    html.Span("Cohort: ", className="network-footer-label"),
+                                    html.Span(selected_subtype.replace('_', ' ').title(), className="network-footer-value network-footer-value--amber" if selected_subtype != "All" else "network-footer-value"),
                                 ]
                             ),
                             html.Div(
@@ -1143,14 +1235,16 @@ def register_callbacks(
     @app.callback(
         [Output("profiles-plot", "figure"),
          Output("profiles-details-card", "children")],
-        [Input("profiles-gene-selector", "value")]
+        [Input("profiles-gene-selector", "value"),
+         Input("theme-store", "data")]
     )
-    def update_profiles(probe_id: str) -> Tuple[go.Figure, list]:
+    def update_profiles(probe_id: str, theme: str) -> Tuple[go.Figure, list]:
         """
         Calculates subtype cohort statistics and renders a combined violin, box,
         and jittered scatter plot for the selected gene.
         """
         from scipy import stats
+        colors = get_theme_colors(theme)
         
         # 1. Query annotations details
         ann_row = df_annot_global[df_annot_global["ProbeID"] == probe_id]
@@ -1252,7 +1346,7 @@ def register_callbacks(
             y0=mean_overall,
             y1=mean_overall,
             line=dict(
-                color="#cbd5e1",
+                color=colors["ticks"],
                 width=1.2,
                 dash="dash"
             ),
@@ -1261,12 +1355,12 @@ def register_callbacks(
         )
         
         fig.update_layout(
-            template=PLOT_TEMPLATE,
+            template=colors["template"],
             title=None, # Removed Plotly title since card header already has one (reclaims space)
             xaxis=dict(
                 title=None, # Removed redundant x-axis title to maximize visual plotting area
-                tickfont=dict(color=PLOT_TICK_COLOR, size=9), # Smaller, more compact tick labels
-                gridcolor=PLOT_GRID,
+                tickfont=dict(color=colors["ticks"], size=9), # Smaller, more compact tick labels
+                gridcolor=colors["grid"],
                 categoryorder="array",
                 categoryarray=[
                     f"Normal<br>N={len(df_expr_global[df_expr_global['type'] == 'normal'])}",
@@ -1277,16 +1371,15 @@ def register_callbacks(
                 ]
             ),
             yaxis=dict(
-                title=dict(text="Log2 Expression Level", font=dict(color=PLOT_AXIS_LABEL_COLOR, size=11)),
-                tickfont=dict(color=PLOT_TICK_COLOR, size=10),
-                gridcolor=PLOT_GRID,
-                zerolinecolor=PLOT_ZEROLINE,
+                title=dict(text="Log2 Expression Level", font=dict(color=colors["ticks"], size=11)),
+                tickfont=dict(color=colors["ticks"], size=10),
+                gridcolor=colors["grid"],
+                zerolinecolor=colors["zeroline"],
             ),
-            plot_bgcolor=PLOT_PLOT_BG,
-            paper_bgcolor=PLOT_PAPER_BG,
+            plot_bgcolor=colors["plot_bg"],
+            paper_bgcolor=colors["paper_bg"],
             margin=dict(l=45, r=20, t=15, b=45), # Reduced margins to completely fill card
-            hovermode="closest",
-            height=290 # Matches the card content viewport height
+            hovermode="closest"
         )
         
         # 6. Render Statistics and ANOVA details card as horizontal footer layout
@@ -1403,14 +1496,16 @@ def register_callbacks(
          Input("simulator-gene-3", "value"),
          Input("simulator-slider-1", "value"),
          Input("simulator-slider-2", "value"),
-         Input("simulator-slider-3", "value")]
+         Input("simulator-slider-3", "value"),
+         Input("theme-store", "data")]
     )
-    def run_simulation(patient_id, gene1, gene2, gene3, val1, val2, val3):
+    def run_simulation(patient_id, gene1, gene2, gene3, val1, val2, val3, theme):
         """
         Runs the centroid distance classifier on the perturbed expression vector
         and updates the horizontal probability plot, prediction card, and distances.
         """
         try:
+            theme_colors = get_theme_colors(theme)
             # Resolve patient ID if None
             if patient_id is None:
                 patient_id = patient_options_global[0]["value"] if patient_options_global else "834"
@@ -1531,21 +1626,21 @@ def register_callbacks(
                 ),
                 text=text_labels,
                 textposition="outside",
-                textfont=dict(color=PLOT_TITLE_COLOR, size=12, family="Inter"),
+                textfont=dict(color=theme_colors["text"], size=12, family="Inter"),
                 hoverinfo="text",
                 hovertext=hover_texts,
                 showlegend=False
             ))
             
             fig.update_layout(
-                template=PLOT_TEMPLATE,
+                template=theme_colors["template"],
                 showlegend=False,  # Plotly legend completely removed
                 dragmode=False,    # Disable rubber-band zoom / pan gestures entirely
                 bargap=0.15,       # Tighter gaps so bars fill more of the row height
                 xaxis=dict(
                     showgrid=False,   # Hide grid lines
                     zeroline=False,
-                    tickfont=dict(color=PLOT_TICK_COLOR, size=10),
+                    tickfont=dict(color=theme_colors["ticks"], size=10),
                     range=[0, 100],   # Similarity scale up to 100%
                     fixedrange=True,  # Lock this chart — no zoom/pan like the other plots
                 ),
@@ -1555,8 +1650,8 @@ def register_callbacks(
                     type="category",
                     fixedrange=True,  # Lock this chart — no zoom/pan like the other plots
                 ),
-                plot_bgcolor=PLOT_PLOT_BG,
-                paper_bgcolor=PLOT_PAPER_BG,
+                plot_bgcolor=theme_colors["plot_bg"],
+                paper_bgcolor=theme_colors["paper_bg"],
                 margin=dict(l=10, r=45, t=8, b=20)  # Wider right margin so outside labels (e.g. "72.8%") never clip
             )
             
@@ -1565,11 +1660,11 @@ def register_callbacks(
             subtype_color = color_map.get(subtype_names_list[max_idx], "#cbd5e1")
             
             prediction_card = [
-                html.H4("Predicted Subtype", style={"color": "#6B7280", "fontSize": "0.68rem", "textTransform": "uppercase", "letterSpacing": "0.05em", "marginTop": "0", "marginBottom": "0.2rem"}),
+                html.H4("Predicted Subtype", className="sim2-result-title", style={"fontSize": "0.68rem", "textTransform": "uppercase", "letterSpacing": "0.05em", "marginTop": "0", "marginBottom": "0.2rem"}),
                 html.Strong(predicted_subtype, style={"color": subtype_color, "fontSize": "1.1rem", "fontFamily": "Outfit", "display": "block", "marginBottom": "0.15rem"}),
                 html.Span([
-                    html.Span("Confidence: ", style={"color": "#6B7280", "fontSize": "0.72rem"}),
-                    html.Strong(f"{prediction_confidence:.1f}%", style={"color": "#1F2937", "fontSize": "0.8rem"})
+                    html.Span("Confidence: ", className="sim2-result-label", style={"fontSize": "0.72rem"}),
+                    html.Strong(f"{prediction_confidence:.1f}%", className="sim2-result-value", style={"fontSize": "0.8rem"})
                 ])
             ]
             
@@ -1579,16 +1674,19 @@ def register_callbacks(
                 display_name = subtype.replace("_", " ").title()
                 dist = distances[i]
                 
+                is_max = (i == max_idx)
+                val_class = "sim2-dist-val-highlighted" if is_max else "sim2-dist-val"
+                
                 distance_items.append(
                     html.Div(
                         style={"display": "flex", "justifyContent": "space-between", "alignItems": "center", "marginBottom": "0.15rem"},
                         children=[
-                            html.Span(display_name, style={"color": "#374151", "fontSize": "0.72rem"}),
+                            html.Span(display_name, className="sim2-dist-name", style={"fontSize": "0.72rem"}),
                             html.Span(
                                 f"{dist:.2f}", 
+                                className=val_class,
                                 style={
-                                    "color": "#10b981" if i == max_idx else "#4B5563",
-                                    "fontWeight": "bold" if i == max_idx else "normal",
+                                    "fontWeight": "bold" if is_max else "normal",
                                     "fontSize": "0.75rem"
                                 }
                             )
@@ -1597,7 +1695,7 @@ def register_callbacks(
                 )
                 
             distance_card = [
-                html.H4("Centroid Distances", style={"color": "#6B7280", "fontSize": "0.68rem", "textTransform": "uppercase", "letterSpacing": "0.05em", "marginTop": "0", "marginBottom": "0.3rem", "borderBottom": "1px solid #E5E7EB", "paddingBottom": "0.2rem"}),
+                html.H4("Centroid Distances", className="sim2-result-title border-bottom-theme", style={"fontSize": "0.68rem", "textTransform": "uppercase", "letterSpacing": "0.05em", "marginTop": "0", "marginBottom": "0.3rem", "paddingBottom": "0.2rem"}),
                 html.Div(distance_items)
             ]
             

@@ -32,8 +32,7 @@ def Header(n_samples: int, n_genes: int, n_classes: int) -> html.Div:
             html.Div(
                 className="header-brand",
                 children=[
-                    html.Span("Onco", className="brand-onco"),
-                    html.Span("Lens", className="brand-lens"),
+                    html.Span("Oncolens", className="brand-onco"),
                     html.Span(
                         "Brain Tumor Visual Analytics Dashboard",
                         className="brand-subtitle"
@@ -47,6 +46,11 @@ def Header(n_samples: int, n_genes: int, n_classes: int) -> html.Div:
                     _pill(str(n_samples), "Samples"),
                     _pill(str(n_genes), "Genes"),
                     _pill(str(n_classes), "Classes"),
+                    html.Button(
+                        "🌙 Dark",
+                        id="theme-toggle-btn",
+                        className="theme-toggle-btn",
+                    ),
                     html.Span(
                         "CS661 • Group 11",
                         style={
