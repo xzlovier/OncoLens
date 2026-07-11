@@ -4,44 +4,99 @@ OncoLens is a high-performance visual analytics system designed for multi-dimens
 
 ## Project Structure
 
-The project directory structure is organized as follows:
-
 ```text
 OncoLens/
 │
 ├── data/
-│   ├── raw/                 # Raw datasets (e.g., GSE50161 CSV profiles)
-│   └── processed/           # Processed datasets (filtered, scaled, annotated profiles)
+│   ├── raw/                      # Raw datasets (e.g., GSE50161 CSV, GPL570 annotation)
+│   └── processed/                # Pipeline outputs (filtered, annotated, ranked datasets)
 │
 ├── notebooks/
-│   └── EDA.ipynb            # Phase 1 Exploratory Data Analysis notebook
+│   └── EDA.ipynb                 # Phase 1 Exploratory Data Analysis notebook
 │
-├── src/                     # Core backend source modules
-│   ├── __init__.py          # Source module package initialization
-│   ├── preprocessing.py     # Variance filtering and dataset loading pipeline
-│   ├── annotation.py        # Probe cross-referencing and cytoband mapping
-│   ├── dysregulation.py     # Calculations for the patient-specific Dysregulation Index
-│   ├── utils.py             # Reusable helper functions and statistical routines
-│   └── config.py            # Global path configs, thresholds, and dashboard themes
+├── src/                          # Core backend processing modules
+│   ├── __init__.py               # Source package initialization
+│   ├── config.py                 # Global path constants and pipeline hyperparameters
+│   ├── preprocessing.py          # Variance filtering and top-gene feature selection
+│   ├── annotation.py             # GPL570 probe cross-referencing and cytoband mapping
+│   ├── dysregulation.py          # Patient-level Dysregulation Index (DI) computation
+│   ├── preprocess_network.py     # Pairwise Pearson co-expression edge list builder
+│   ├── evaluate_pairs.py         # Grid-search Silhouette scorer for all gene pairs
+│   └── utils.py                  # Reusable helper functions and statistical routines
 │
-├── app/                     # Frontend visualization files
-│   ├── __init__.py          # Dash package initialization
-│   ├── app.py               # Application entry point and server startup
-│   ├── layouts.py           # Dashboard layout grids and UI components
-│   └── callbacks.py         # Reactive callbacks for visual analytics components
+├── app/                          # Dash web application
+│   ├── __init__.py               # App package initialization
+│   ├── app.py                    # Server entry point — loads data and registers callbacks
+│   ├── config.py                 # Simulator gene defaults and temperature parameter
+│   ├── callbacks.py              # Reactive callback handlers for all dashboard panels
+│   └── layouts/                  # Modular UI layout components
+│       ├── __init__.py           # Layout package exports
+│       ├── theme.py              # Design tokens (colors, plot templates)
+│       ├── dashboard.py          # Top-level dashboard grid assembly
+│       ├── header.py             # Dashboard header bar
+│       ├── contour_card.py       # Joint gene phenotyping contour/scatter card
+│       ├── hotspot_card.py       # Chromosomal hotspot visualization card
+│       ├── network_card.py       # Co-expression network graph card
+│       ├── expression_card.py    # Gene expression profile explorer card
+│       ├── viz_card.py           # Generic visualization card wrapper
+│       ├── simulator_card.py     # Virtual Expression Assayer (simulator) card
+│       └── summary_cards.py      # Top-level KPI summary statistics cards
 │
-├── assets/                  # CSS stylesheets, static images, and custom JS scripts
+├── assets/                       # CSS stylesheets, static images, and custom JS
 │
-├── requirements.txt         # Production and development dependencies
-├── README.md                # Project documentation and summary overview
-└── .gitignore               # Ignored local files, cache, and large binaries
+├── requirements.txt              # Python dependencies
+├── README.md                     # Project documentation
+└── .gitignore                    # Ignored files (cache, large binaries, secrets)
 ```
 
-## Setup Instructions
+## Dataset
 
-1. Install the required dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
-2. Place raw genomic profiles under `data/raw/`.
-3. Open `notebooks/EDA.ipynb` to explore the initial dataset summaries.
+The primary expression dataset is **GSE50161** (Brain tumor transcriptomics, Affymetrix HG-U133 Plus 2.0 platform).
+
+- Download `Brain_GSE50161.csv` and place it under `data/raw/`.
+- The GPL570 platform annotation file (`GPL570.annot.gz`) is automatically downloaded by `src/annotation.py` on first run.
+
+## Setup
+
+Install the required dependencies:
+
+```bash
+pip install -r requirements.txt
+```
+
+## Pipeline Execution
+
+Run each stage in order from the project root:
+
+```bash
+# 1. Variance-filter raw expression data → selects top 1000 genes
+python -m src.preprocessing
+
+# 2. Download GPL570 annotation and cross-reference probes
+python -m src.annotation
+
+# 3. Compute patient-level Dysregulation Index (DI)
+python -m src.dysregulation
+
+# 4. Build pairwise Pearson co-expression edge list (r ≥ 0.70)
+python -m src.preprocess_network
+
+# 5. Grid-search all gene pairs for optimal 2D Silhouette separation
+#    (computationally intensive — uses multiprocessing)
+python -m src.evaluate_pairs
+
+# 6. Launch the interactive dashboard
+python -m app.app
+```
+
+The dashboard will be available at `http://localhost:8050`.
+
+## Dashboard Features
+
+| Panel | Description |
+|---|---|
+| **Joint Gene Phenotyping** | 2D contour/scatter plot for any selected gene pair with Silhouette score |
+| **Chromosomal Hotspots** | Genome-wide locus mapping of top-variance probes |
+| **Co-Expression Network** | Interactive Pearson correlation graph with click-to-highlight neighbors |
+| **Expression Profiles** | Per-gene violin/box plot across all five clinical subtypes with ANOVA |
+| **Virtual Expression Assayer** | Softmax centroid classifier simulating expression perturbations in real time |

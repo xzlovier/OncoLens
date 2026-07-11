@@ -20,7 +20,6 @@ from app.layouts.theme import (
     PLOT_TEMPLATE,
     PLOT_PAPER_BG, PLOT_PLOT_BG, PLOT_GRID, PLOT_ZEROLINE,
     PLOT_TICK_COLOR, PLOT_TITLE_COLOR, PLOT_AXIS_LABEL_COLOR,
-    COLOR_TEXT_SECONDARY, COLOR_BORDER,
 )
 
 # ==============================================================================
@@ -100,46 +99,6 @@ def make_stats_card_content(
     ]
 
 
-def make_pair_quality_card_content(sil_score: float, interpretation: str, color: str) -> list:
-    """
-    Renders the metadata panel showing the 2D Silhouette separation quality.
-    """
-    return [
-        html.H4("Pair Separation Quality", className="card-title", style={"borderBottom": "1px solid #1e293b", "paddingBottom": "0.5rem", "marginBottom": "1rem"}),
-        html.Div(
-            style={"display": "flex", "flexDirection": "column", "justifyContent": "center", "height": "calc(100% - 40px)"},
-            children=[
-                html.Div(
-                    style={"textAlign": "center", "marginBottom": "1.25rem", "marginTop": "0.5rem"},
-                    children=[
-                        html.Span("2D Silhouette Score", style={"fontSize": "0.85rem", "color": "#64748b", "display": "block", "marginBottom": "0.25rem"}),
-                        html.Strong(f"{sil_score:.4f}", style={"fontSize": "2.4rem", "color": "#f8fafc", "fontFamily": "Outfit"})
-                    ]
-                ),
-                html.Div(
-                    style={"textAlign": "center"},
-                    children=[
-                        html.Span("Clinical Separation Strength", style={"fontSize": "0.85rem", "color": "#64748b", "display": "block", "marginBottom": "0.5rem"}),
-                        html.Div(
-                            interpretation,
-                            style={
-                                "color": color,
-                                "backgroundColor": f"{color}12",
-                                "border": f"1px solid {color}30",
-                                "borderRadius": "8px",
-                                "padding": "8px 16px",
-                                "fontSize": "1.05rem",
-                                "fontWeight": "700",
-                                "display": "inline-block",
-                                "textTransform": "uppercase",
-                                "letterSpacing": "0.05em"
-                            }
-                        )
-                    ]
-                )
-            ]
-        )
-    ]
 
 
 def make_contour_footer_content(
@@ -478,25 +437,15 @@ def register_callbacks(
         
         sil = silhouette_score(X_scaled, df_plot["type"])
         
-        # Select interpretation and styling
+        # Select interpretation for separation quality footer
         if sil >= 0.5:
             interpretation = "Excellent separation"
-            quality_color = "#10b981"  # Emerald
         elif sil >= 0.35:
             interpretation = "Good separation"
-            quality_color = "#3b82f6"  # Blue
         elif sil >= 0.15:
             interpretation = "Moderate separation"
-            quality_color = "#f59e0b"  # Amber
         else:
             interpretation = "Weak separation"
-            quality_color = "#ef4444"  # Crimson
-            
-        card_quality_content = make_pair_quality_card_content(
-            sil_score=sil,
-            interpretation=interpretation,
-            color=quality_color
-        )
         
         # H. Generate Plotly Figure
         fig = go.Figure()
@@ -1404,30 +1353,19 @@ def register_callbacks(
         Dynamically adjusts the min, max, and values of the three perturbation sliders
         based on the selected patient baseline, gene selection, or reset button click.
         """
-        import datetime
         ctx = callback_context
         triggered_id = ctx.triggered_id if hasattr(ctx, "triggered_id") else (ctx.triggered[0]["prop_id"].split(".")[0] if ctx.triggered else "")
-        now_str = datetime.datetime.now().isoformat()
-        
-        print(f"\n[CALLBACK EXECUTION] timestamp={now_str} name=update_simulator_slider_bounds")
-        print(f"  triggered_id: {triggered_id}")
-        print(f"  Inputs: patient_id={patient_id}, gene1={gene1}, gene2={gene2}, gene3={gene3}, n_clicks={n_clicks}")
         
         # Ignore reset button initial render/mount triggers (when n_clicks is 0 or None)
         if triggered_id == "simulator-reset-btn" and (n_clicks is None or n_clicks == 0):
-            print("  update_simulator_slider_bounds: Ignored reset button initial render trigger.")
             return [no_update] * 9
             
         if not patient_id:
-            results = (0, 15, 5, 0, 15, 5, 0, 15, 5)
-            print(f"  Outputs: {results}")
-            return results
+            return (0, 15, 5, 0, 15, 5, 0, 15, 5)
             
         patient_row = df_expr_global[df_expr_global["samples"].astype(str) == str(patient_id)]
         if patient_row.empty:
-            results = (0, 15, 5, 0, 15, 5, 0, 15, 5)
-            print(f"  Outputs: {results}")
-            return results
+            return (0, 15, 5, 0, 15, 5, 0, 15, 5)
         results = []
         for gene in [gene1, gene2, gene3]:
             baseline = patient_row[gene].values[0]
@@ -1447,7 +1385,6 @@ def register_callbacks(
                 
             results.extend([round(s_min, 2), round(s_max, 2), round(val, 3)])
             
-        print(f"  Outputs: {results}")
         return results
 
     # --------------------------------------------------------------------------
@@ -1474,11 +1411,6 @@ def register_callbacks(
         and updates the horizontal probability plot, prediction card, and distances.
         """
         try:
-            import datetime
-            ctx = callback_context
-            triggered_id = ctx.triggered_id if hasattr(ctx, "triggered_id") else (ctx.triggered[0]["prop_id"].split(".")[0] if ctx.triggered else "")
-            now_str = datetime.datetime.now().isoformat()
-            
             # Resolve patient ID if None
             if patient_id is None:
                 patient_id = patient_options_global[0]["value"] if patient_options_global else "834"
@@ -1561,13 +1493,6 @@ def register_callbacks(
                 labels.append(label_el)
                 
             # 2. Horizontal probability bar chart
-            y_labels = [s.replace("_", " ").title() for s in subtype_names_list]
-            prob_percentages = probabilities * 100
-            
-            # Highlight predicted class via color opacity boundaries
-            opacities = [1.0 if i == max_idx else 0.55 for i in range(5)]
-            bar_colors = [color_map.get(s, "#cbd5e1") for s in subtype_names_list]
-            
             # Sort subtypes alphabetically so they match the Contour plot legend ordering:
             # Ependymoma, Glioblastoma, Medulloblastoma, Normal, Pilocytic Astrocytoma
             alphabetical_subtypes = ["ependymoma", "glioblastoma", "medulloblastoma", "normal", "pilocytic_astrocytoma"]

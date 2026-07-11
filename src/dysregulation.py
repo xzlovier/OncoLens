@@ -8,7 +8,6 @@ patient expression profiles relative to this baseline, and sums the absolute
 z-scores. It outputs a patient-level DI table and a boxplot visualization.
 """
 
-import os
 from typing import Tuple, Dict, List
 import pandas as pd
 import numpy as np
@@ -150,16 +149,16 @@ def save_results(df_di: pd.DataFrame) -> Path:
     return output_path
 
 
-def generate_validation_plot(df_di: pd.DataFrame) -> Tuple[Path, Path]:
+def generate_validation_plot(df_di: pd.DataFrame) -> Path:
     """
     Generates a boxplot/violin plot of the Dysregulation Index grouped by tumor type.
-    Saves the figure to processed data and artifact directory.
+    Saves the figure to the processed data directory.
 
     Args:
         df_di (pd.DataFrame): Patient DI DataFrame.
 
     Returns:
-        Tuple[Path, Path]: (processed_plot_path, artifact_plot_path)
+        Path: Path to the saved plot file.
     """
     sns.set_theme(style="whitegrid")
     plt.figure(figsize=(12, 7))
@@ -195,18 +194,10 @@ def generate_validation_plot(df_di: pd.DataFrame) -> Tuple[Path, Path]:
     plt.xticks(rotation=15)
     plt.tight_layout()
     
-    # Save to data/processed
     processed_plot_path = PROCESSED_DATA_DIR / "patient_DI_boxplot.png"
     plt.savefig(processed_plot_path, dpi=300, bbox_inches='tight')
-    
-    # Save to artifact directory
-    artifact_dir = Path("C:/Users/HP/.gemini/antigravity/brain/ba6bf013-025c-4dc1-ad26-4f14408f93b9")
-    artifact_plot_path = artifact_dir / "patient_DI_boxplot.png"
-    if artifact_dir.exists():
-        plt.savefig(artifact_plot_path, dpi=300, bbox_inches='tight')
-        
     plt.close()
-    return processed_plot_path, artifact_plot_path
+    return processed_plot_path
 
 
 def main() -> None:
@@ -223,7 +214,6 @@ def main() -> None:
     # 3. Compute baseline mean and std dev across healthy controls (normal samples)
     mean_normal, std_normal, valid_mask = compute_normal_stats(df_annotated, normal_samples)
     
-    total_genes = len(df_annotated)
     skipped_genes = int(np.sum(~valid_mask))
     used_genes = int(np.sum(valid_mask))
     
@@ -241,7 +231,7 @@ def main() -> None:
     output_csv = save_results(df_di)
     
     # 7. Generate boxplot visualization
-    processed_plot, _ = generate_validation_plot(df_di)
+    processed_plot = generate_validation_plot(df_di)
     
     # 8. Print report
     print("=====================================")
@@ -254,7 +244,8 @@ def main() -> None:
     print(f"Maximum DI               : {dis.max():.2f}")
     print(f"Mean DI                  : {dis.mean():.2f}")
     print(f"Standard Deviation of DI : {dis.std():.2f}")
-    print(f"Output file location     : {output_csv}")
+    print(f"Output CSV               : {output_csv}")
+    print(f"Validation plot          : {processed_plot}")
     print("=====================================")
 
 
