@@ -90,6 +90,7 @@ python -m app.app
 ```
 
 The dashboard will be available at `http://localhost:8050`.
+(Zoom out to 75% to 67% for better view)
 
 ## Dashboard Features
 
