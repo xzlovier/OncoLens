@@ -30,9 +30,11 @@ body {
     -webkit-font-smoothing: antialiased;
 }
 
-/* ── Dash internal wrappers — must all be 100% height ────────── */
-/* Without these, height:100vh on .oncolens-dashboard has nothing
-   to anchor to because the immediate parent is height:auto.     */
+/* ── Dash internal wrappers — must all propagate height ──────── */
+/* In debug mode Dash injects #_dash-global-error-container > div
+   between #react-entry-point and #_dash-app-content.  In production
+   (gunicorn / Railway) those wrappers are ABSENT.  We style every
+   possible intermediate wrapper so the chain works in both modes. */
 #react-entry-point,
 #_dash-global-error-container,
 #_dash-global-error-container > div,
@@ -44,10 +46,13 @@ body {
 }
 
 /* ── Root dashboard wrapper ───────────────────────────────────── */
+/* height: 100vh is the single definite-height anchor for the
+   entire flexbox tree below.  This makes the layout independent
+   of how many (or how few) Dash-internal wrappers sit above it. */
 .oncolens-dashboard {
     display: flex;
     flex-direction: column;
-    height: 100%;          /* fills the Dash wrapper chain above */
+    height: 100vh;         /* viewport-anchored — works in both debug and production */
     overflow: hidden;
     background: #EBF3FC;
 }
