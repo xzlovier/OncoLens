@@ -569,6 +569,10 @@ body {
     justify-content:flex-end;
 
     padding-bottom:2px;
+
+    min-width:155px;
+
+    flex-shrink:0;
 }
 
 .toolbar-control{
@@ -659,7 +663,7 @@ body {
     gap: 0px;                        /* ← spacing between genes   */
     padding: 6px 10px;
     border-right: 1px solid #E5E7EB;
-    overflow: hidden;
+    overflow-y: auto;
 }
 
 .sim2-patient-row {
@@ -738,8 +742,8 @@ body {
     min-height:0;
 }
 .sim2-chart {
-    flex: 2 1 0;
-    min-height: 220px;
+    flex: 1 1 0;
+    min-height: 140px;
     display: flex;
     flex-direction: column;
     width: 100%;

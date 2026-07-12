@@ -604,7 +604,7 @@ def register_callbacks(
                 tracegroupgap=0,
                 traceorder="normal",
             ),
-            margin=dict(l=50, r=40, t=20, b=50),
+            margin=dict(l=50, r=40, t=38, b=50),
             hovermode="closest"
         )
         
